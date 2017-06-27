@@ -1,5 +1,5 @@
 import unittest
-import capo.linsolve as linsolve
+import linsolve
 import numpy as np
 import ast
 
