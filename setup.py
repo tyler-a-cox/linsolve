@@ -1,17 +1,33 @@
+from setuptools import setup
 import glob
+import os.path as op
+from os import listdir
+from linsolve import version
+import json
 
-__version__ = '0.0.1'
+data = [version.git_origin, version.git_hash, version.git_description, version.git_branch]
+with open(op.join('linsolve', 'GIT_INFO'), 'w') as outfile:
+    json.dump(data, outfile)
+import glob
 
 setup_args = {
     'name': 'linsolve',
-    'author': 'Aaron Parsons and Joshua Dillon',
-    'author_email': 'aparsons at berkeley.edu',
-    'license': 'GPL',
-    'package_dir' : {'linsolve':'src'},
+    'author': 'HERA Team',
+    'url': 'https://github.com/HERA-Team/linsolve',
+    'license': 'BSD',
+    'description': 'high-level tools for linearizing and solving systems of equations',
+    'package_dir' : {'linsolve':'linsolve'},
     'packages' : ['linsolve'],
-    'version': __version__,
+    'version': version.version,
+    'include_package_data': True,
+    'install_requires': ['numpy>=1.10', 'scipy'],
+    'classifiers': ['Development Status :: 5 - Production/Stable',
+                    'Intended Audience :: Science/Research',
+                    'License :: OSI Approved :: BSD License',
+                    'Programming Language :: Python :: 2.7',
+                    'Topic :: Scientific/Engineering :: Mathematics'],
+    'keywords': 'linear equations optimal estimation',
 }
 
 if __name__ == '__main__':
-    from distutils.core import setup
     apply(setup, (), setup_args)
