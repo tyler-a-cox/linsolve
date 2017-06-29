@@ -1,3 +1,29 @@
+'''Module providing high-level tools for linearizing and solving systems of equations.
+
+Solvers: LinearSolver, LogProductSolver, and LinProductSolver.
+
+These generally follow the form:
+> data = {'a1*x+b1*y': np.array([5.,7]), 'a2*x+b2*y': np.array([4.,6])}
+> ls = LinearSolver(data, a1=1., b1=np.array([2.,3]), a2=2., b2=np.array([1.,2]))
+> sol = ls.solve()
+
+where equations are passed in as a dictionary where each key is a string
+describing the equation (which is parsed according to python syntax) and each
+value is the corresponding "measured" value of that equation.  Variable names
+in equations are checked against keyword arguments to the solver to determine
+if they are provided constants or parameters to be solved for.  Parameter anmes
+and solutions are return are returned as key:value pairs in ls.solve().
+Parallel instances of equations can be evaluated by providing measured values
+as numpy arrays.  Constants can also be arrays that comply with standard numpy
+broadcasting rules.  Finally, weighting is implemented through an optional wgts
+dictionary that parallels the construction of data.
+
+LinearSolver solves linear equations of the form 'a*x + b*y + c*z'.
+LogProductSolver uses logrithms to linearize equations of the form 'x*y*z'.
+LinProductSolver uses symbolic Taylor expansion to linearize equations of the
+form 'x*y + y*z'.
+'''
+
 import numpy as np
 import ast
 from scipy.sparse import lil_matrix, csr_matrix
