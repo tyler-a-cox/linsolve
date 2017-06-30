@@ -1,7 +1,9 @@
 [run]
-omit = */tests/*
-linsolve/version.py
+omit = 
+    */tests/*
+    */version.py
 
 [report]
-omit = */tests/*
-linsolve/version.py
+omit = 
+    */tests/*
+    */version.py
