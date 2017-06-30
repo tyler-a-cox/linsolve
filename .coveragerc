@@ -1,0 +1,7 @@
+[run]
+omit = */tests/*
+linsolve/version.py
+
+[report]
+omit = */tests/*
+linsolve/version.py

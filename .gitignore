@@ -1,0 +1,5 @@
+build/*
+linsolve.egg-info*
+dist/*
+*.pyc
+*GIT_INFO
