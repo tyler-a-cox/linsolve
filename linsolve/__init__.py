@@ -296,7 +296,7 @@ class LinearSolver:
                 #x[...,k:k+1] = xhat
 
                 Ak = csr_matrix((vals[min(k,Ashape[-1]-1)], (xs,ys))) 
-                xhat = scipy.sparse.linalg.lsqr(Ak, y[...,k], atol=rcond, btol=rcond)[0]
+                xhat = scipy.sparse.linalg.lsqr(Ak, y[...,k], atol=rcond, btol=rcond)[0] # XXX does this err for singular cases?
                 x[...,k] = xhat
         else: 
             A = self.get_A()
