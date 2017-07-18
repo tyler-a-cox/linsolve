@@ -272,26 +272,60 @@ class LinearSolver:
         x = np.empty((Ashape[1],y.shape[-1]), dtype=self.dtype)
         if self.sparse:
             xs, ys, vals = self.get_A_sparse()
-            AtAi = None
+            #AtAi = None
             for k in xrange(y.shape[-1]):
                 if verbose: print 'Solving %d/%d' % (k, y.shape[-1])
-                if AtAi is None or Ashape[-1] != 1:
-                    Ak = csr_matrix((vals[k], (xs,ys))) 
-                    AtA = Ak.T.conj().dot(Ak).toarray()
-                    AtAi = np.linalg.pinv(AtA, rcond=rcond)
-                x[...,k:k+1] = AtAi.dot(Ak.T.conj().dot(y[...,k:k+1]))
+
+                # inverse is ~10x slower than lsqr
+                #if AtAi is None or Ashape[-1] != 1:
+                #    Ak = csr_matrix((vals[k], (xs,ys))) 
+                #    At = Ak.T.conj()
+                #    AtA = At.dot(Ak).toarray()
+                #    try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
+                #    except(np.linalg.LinAlgError): AtAi = np.linalg.inv(AtA)
+                #x[...,k:k+1] = AtAi.dot(At.conj().dot(y[...,k:k+1]))
+
+                # solve is ~3x slower than lsqr
+                #Ak = csr_matrix((vals[k], (xs,ys))) 
+                #At = Ak.T.conj()
+                #AtA = At.dot(Ak).toarray()
+                ##Aty = At.dot(y[...,k:k+1])
+                #Aty = At.dot(y[...,k:k+1]) # automatically dense bc y is dense
+                ##xhat = scipy.sparse.linalg.spsolve(AtA, Aty)
+                #xhat = np.linalg.solve(AtA, Aty)
+                #x[...,k:k+1] = xhat
+
+                Ak = csr_matrix((vals[min(k,Ashape[-1]-1)], (xs,ys))) 
+                xhat = scipy.sparse.linalg.lsqr(Ak, y[...,k], atol=rcond, btol=rcond)[0]
+                x[...,k] = xhat
         else: 
             A = self.get_A()
             assert(A.ndim == 3)
             AtAiAt = None
             for k in xrange(y.shape[-1]):
                 if verbose: print 'Solving %d/%d' % (k, y.shape[-1])
+
                 if AtAiAt is None or Ashape[-1] != 1:
-                    Ak = A[...,k]
-                    AtA = Ak.T.conj().dot(Ak) 
-                    AtAi = np.linalg.pinv(AtA, rcond=rcond)
-                    AtAiAt = AtAi.dot(Ak.T.conj()) 
-                x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
+                    Ak = A[...,min(k,Ashape[-1]-1)]
+                    At = Ak.T.conj()
+                    AtA = At.dot(Ak) 
+                    try:
+                        Aty = At.dot(y[...,k:k+1])
+                        xhat = np.linalg.solve(AtA, Aty) # errors out for singular
+                    except(np.linalg.LinAlgError):
+                        # finding inverse is about 3x slower than solve
+                        try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
+                        except(np.linalg.LinAlgError): AtAi = np.linalg.inv(AtA)
+                        AtAiAt = AtAi.dot(Ak.T.conj()) 
+                        xhat = np.dot(AtAiAt,y[...,k:k+1])
+                else: # then we've already computed AtAiAt and might as well use it
+                    xhat = np.dot(AtAiAt,y[...,k:k+1])
+                x[...,k:k+1] = xhat
+
+                # about 1.5x slower than solve, but that may depend on rcond
+                #Ak = A[...,k]
+                #xhat = np.linalg.lstsq(Ak, y[...,k], rcond=rcond)[0]
+                #x[...,k] = xhat
         x.shape = x.shape[:1] + self._data_shape # restore to shape of original data
         sol = {}
         for p in self.prms.values(): sol.update(p.get_sol(x,self.prm_order))
@@ -473,11 +507,12 @@ class LinProductSolver:
         if wgts is None: wgts = self.wgts
         return self.ls._chisq(sol, data, wgts, self.eval)
 
-    def solve_iteratively(self, conv_crit=1e-10, maxiter=50):
+    def solve_iteratively(self, conv_crit=1e-10, maxiter=50, verbose=False):
         '''Repeatedly solves and updates linsolve until convergence or maxiter is reached. 
         Returns a meta object containing the number of iterations, chisq, and convergence criterion.'''
         for i in range(1,maxiter+1):
-            new_sol = self.solve()
+            if verbose: print 'Beginning iteration %d/%d' % (i,maxiter)
+            new_sol = self.solve(rcond=conv_crit, verbose=verbose) # XXX is rcond=conv_crit correct?
             deltas = [new_sol[k]-self.sol0[k] for k in new_sol.keys()]
             conv = np.linalg.norm(deltas, axis=0) / np.linalg.norm(new_sol.values(),axis=0)
             if np.all(conv < conv_crit) or i == maxiter:
