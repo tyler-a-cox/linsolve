@@ -127,7 +127,11 @@ class LinearEquation:
         for term in terms:
             for t in term:
                 try:
-                    self.add_const(t, **kwargs)
+                    #self.add_const(t, **kwargs) # this is slow if kwargs is big, so trim first
+                    name = get_name(t)
+                    if type(name) is str: val = kwargs[name]
+                    else: val = name
+                    self.add_const(t, **{name:val})
                 except(KeyError): # must be a parameter then
                     p = Parameter(t)
                     self.has_conj |= get_name(t,isconj=True)[-1] # keep track if any prms are conj
@@ -136,7 +140,7 @@ class LinearEquation:
     def add_const(self, name, **kwargs):
         '''Manually add a constant of given name to internal list of contants. Value is drawn from kwargs.'''
         n = get_name(name)
-        if kwargs.has_key(n) and isinstance(kwargs[n], Constant): c = kwargs[n] 
+        if kwargs.has_key(n) and isinstance(kwargs[n], Constant): c = kwargs[n]
         else: c = Constant(name, **kwargs) # raises KeyError if not a constant
         self.consts[c.name] = c
     def order_terms(self, terms):
