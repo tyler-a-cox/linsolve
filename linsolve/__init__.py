@@ -294,7 +294,6 @@ class LinearSolver:
                 ##xhat = scipy.sparse.linalg.spsolve(AtA, Aty)
                 #xhat = np.linalg.solve(AtA, Aty)
                 #x[...,k:k+1] = xhat
-
                 Ak = csr_matrix((vals[min(k,Ashape[-1]-1)], (xs,ys))) 
                 xhat = scipy.sparse.linalg.lsqr(Ak, y[...,k], atol=rcond, btol=rcond)[0] # XXX does this err for singular cases?
                 x[...,k] = xhat
@@ -310,22 +309,20 @@ class LinearSolver:
                     At = Ak.T.conj()
                     AtA = At.dot(Ak) 
                     try:
-                        Aty = At.dot(y[...,k:k+1])
-                        xhat = np.linalg.solve(AtA, Aty) # errors out for singular
+                        x[...,k] = np.linalg.lstsq(Ak, y[...,k], rcond=rcond)[0]
+                        # Aty = At.dot(y[...,k:k+1])
+                        # xhat = np.linalg.solve(AtA, Aty) # is supposed to error for singular matrices, but doesn't seem to.
+                        # Solve is ~1.5 times faster than lstqr, but fails to deal with singular matrices in our redcal tests
                     except(np.linalg.LinAlgError):
                         # finding inverse is about 3x slower than solve
                         try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
-                        except(np.linalg.LinAlgError): AtAi = np.linalg.inv(AtA)
+                        except(np.linalg.LinAlgError): 
+                            AtAi = np.linalg.inv(AtA)
                         AtAiAt = AtAi.dot(Ak.T.conj()) 
-                        xhat = np.dot(AtAiAt,y[...,k:k+1])
+                        x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
                 else: # then we've already computed AtAiAt and might as well use it
-                    xhat = np.dot(AtAiAt,y[...,k:k+1])
-                x[...,k:k+1] = xhat
+                    x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
 
-                # about 1.5x slower than solve, but that may depend on rcond
-                #Ak = A[...,k]
-                #xhat = np.linalg.lstsq(Ak, y[...,k], rcond=rcond)[0]
-                #x[...,k] = xhat
         x.shape = x.shape[:1] + self._data_shape # restore to shape of original data
         sol = {}
         for p in self.prms.values(): sol.update(p.get_sol(x,self.prm_order))
