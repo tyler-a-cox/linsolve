@@ -129,9 +129,9 @@ class LinearEquation:
                 try:
                     #self.add_const(t, **kwargs) # this is slow if kwargs is big, so trim first
                     name = get_name(t)
-                    if type(name) is str: val = kwargs[name]
-                    else: val = name
-                    self.add_const(t, **{name:val})
+                    kw = {}
+                    if kwargs.has_key(name): kw[name] = kwargs[name]
+                    self.add_const(t, **kw)
                 except(KeyError): # must be a parameter then
                     p = Parameter(t)
                     self.has_conj |= get_name(t,isconj=True)[-1] # keep track if any prms are conj
