@@ -127,7 +127,11 @@ class LinearEquation:
         for term in terms:
             for t in term:
                 try:
-                    self.add_const(t, **kwargs)
+                    #self.add_const(t, **kwargs) # this is slow if kwargs is big, so trim first
+                    name = get_name(t)
+                    kw = {}
+                    if kwargs.has_key(name): kw[name] = kwargs[name]
+                    self.add_const(t, **kw)
                 except(KeyError): # must be a parameter then
                     p = Parameter(t)
                     self.has_conj |= get_name(t,isconj=True)[-1] # keep track if any prms are conj
@@ -136,7 +140,7 @@ class LinearEquation:
     def add_const(self, name, **kwargs):
         '''Manually add a constant of given name to internal list of contants. Value is drawn from kwargs.'''
         n = get_name(name)
-        if kwargs.has_key(n) and isinstance(kwargs[n], Constant): c = kwargs[n] 
+        if kwargs.has_key(n) and isinstance(kwargs[n], Constant): c = kwargs[n]
         else: c = Constant(name, **kwargs) # raises KeyError if not a constant
         self.consts[c.name] = c
     def order_terms(self, terms):
@@ -451,7 +455,9 @@ class LinProductSolver:
                 for t in term:
                     t_name = get_name(t)
                     if self.sols_kwargs.has_key(t_name):
-                        self.eq_dict[self.taylor_keys[k]].add_const(t_name, **self.sols_kwargs)
+                        #self.eq_dict[self.taylor_keys[k]].add_const(t_name, **self.sols_kwargs)
+                        kw = {t_name: self.sols_kwargs[t_name]}
+                        self.eq_dict[self.taylor_keys[k]].add_const(t_name, **kw)
         self._update_solver(sol0)
 
     def _update_solver(self, sol):
