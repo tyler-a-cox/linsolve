@@ -455,7 +455,9 @@ class LinProductSolver:
                 for t in term:
                     t_name = get_name(t)
                     if self.sols_kwargs.has_key(t_name):
-                        self.eq_dict[self.taylor_keys[k]].add_const(t_name, **self.sols_kwargs)
+                        #self.eq_dict[self.taylor_keys[k]].add_const(t_name, **self.sols_kwargs)
+                        kw = {t_name: self.sols_kwargs[t_name]}
+                        self.eq_dict[self.taylor_keys[k]].add_const(t_name, **kw)
         self._update_solver(sol0)
 
     def _update_solver(self, sol):
