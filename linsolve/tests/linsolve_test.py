@@ -234,6 +234,14 @@ class TestLinearSolver(unittest.TestCase):
         sol = ls.solve()
         chisq = ls.chisq(sol)
         np.testing.assert_equal(chisq, .5)
+        x = 1.
+        d = {'1*x': 2.0, 'x': 1.0}
+        w = {'1*x': 1.0, 'x': .5**.5}
+        ls = linsolve.LinearSolver(d, wgts=w, sparse=self.sparse)
+        sol = ls.solve()
+        chisq = ls.chisq(sol)
+        self.assertAlmostEqual(sol['x'], 5.0/3.0)
+        self.assertAlmostEqual(ls.chisq(sol), 1.0/3.0)
     def test_dtypes(self):
         ls = linsolve.LinearSolver({'x_': 1.0+1.0j}, sparse=self.sparse)
         self.assertEqual(ls.dtype,float)

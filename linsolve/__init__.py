@@ -347,14 +347,14 @@ class LinearSolver:
     def _chisq(self, sol, data, wgts, evaluator):
         """Internal adaptable chisq calculator."""
         if len(wgts) == 0: sigma2 = {k: 1.0 for k in data.keys()} #equal weights
-        else: sigma2 = {k: wgts[k]**2 for k in wgts.keys()} 
+        else: sigma2 = {k: wgts[k]**-2 for k in wgts.keys()} 
         evaluated = evaluator(sol, keys=data)
         chisq = 0
         for k in data.keys(): chisq += np.abs(evaluated[k]-data[k])**2 / sigma2[k]
         return chisq
     
     def chisq(self, sol, data=None, wgts=None):
-        """Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as sigma. 
+        """Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as 1/sigma. 
         Empty weights means sigma=1. Uses the stored data and weights unless otherwise overwritten."""
         if data is None: data = self.data
         if wgts is None: wgts = self.wgts
@@ -504,7 +504,7 @@ class LinProductSolver:
         return self._get_ans0(sol, keys=keys)
     
     def chisq(self, sol, data=None, wgts=None):
-        '''Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as sigma. 
+        '''Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as 1/sigma. 
         Empty weights means sigma=1. Uses the stored data and weights unless otherwise overwritten.'''
         if data is None: data = self.data
         if wgts is None: wgts = self.wgts
