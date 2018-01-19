@@ -1,4 +1,5 @@
-'''Module providing high-level tools for linearizing and solving systems of equations.
+'''Module providing high-level tools for linearizing and finding chi^2 minimizing 
+solutions to systems of equations.
 
 Solvers: LinearSolver, LogProductSolver, and LinProductSolver.
 
@@ -54,9 +55,11 @@ def get_name(s, isconj=False):
     if isconj: return s.rstrip('_'), s.endswith('_') # tag names ending in '_' for conj
     else: return s.rstrip('_') # parse 'name_' as 'name' + conj
 
+
 class Constant:
-    '''Container for constants (which can be arrays) in linear equations.'''
+
     def __init__(self, name, **kwargs):
+        '''Container for constants (which can be arrays) in linear equations.'''
         self.name = get_name(name)
         if type(name) is str: self.val = kwargs[self.name]
         else: self.val = name
@@ -75,15 +78,19 @@ class Constant:
             else: return self.val
         else: return self.val
 
+
 class Parameter:
-    '''Container for parameters that are to be solved for.'''
+    
     def __init__(self, name):
+        '''Container for parameters that are to be solved for.'''
         self.name = get_name(name)
+    
     def put_matrix(self, name, m, eqnum, prm_order, prefactor, re_im_split=True):
         '''Return line for A matrix in A*x=y.  Handles conj if name='prmname_' is 
         requested instead of name='prmname'.'''
         xs,ys,vals = self.sparse_form(name, eqnum, prm_order, prefactor, re_im_split=re_im_split)
         m[xs,ys,0] = vals
+    
     def sparse_form(self, name, eqnum, prm_order, prefactor, re_im_split=True):
         xs,ys,vals = [], [], []
         # separated into real and imaginary parts iff one of the variables is conjugated with "_"
@@ -104,6 +111,7 @@ class Parameter:
         else:
             xs.append(eqnum); ys.append(prm_order[self.name]); vals.append(prefactor)
         return xs, ys, vals
+    
     def get_sol(self, x, prm_order):
         '''Extract prm value from appropriate row of x solution.'''
         if x.shape[0] > len(prm_order): # detect that we are splitting up real and imaginary parts
@@ -111,9 +119,11 @@ class Parameter:
             return {self.name: x[ordr] + 1j*x[ordi]}
         else: return {self.name: x[prm_order[self.name]]}
 
+
 class LinearEquation:
-    '''Container for all prms and constants associated with a linear equation.'''
+
     def __init__(self, val, **kwargs):
+        '''Container for all prms and constants associated with a linear equation.'''
         self.val = val
         if type(val) is str:
             n = ast.parse(val, mode='eval')
@@ -121,6 +131,7 @@ class LinearEquation:
         self.wgts = kwargs.pop('wgts',1.)
         self.has_conj = False
         self.process_terms(val, **kwargs)
+    
     def process_terms(self, terms, **kwargs):
         '''Classify terms from parsed str as Constant or Parameter.'''
         self.consts, self.prms = {}, {}
@@ -137,12 +148,14 @@ class LinearEquation:
                     self.has_conj |= get_name(t,isconj=True)[-1] # keep track if any prms are conj
                     self.prms[p.name] = p
         self.terms = self.order_terms(terms)
+    
     def add_const(self, name, **kwargs):
         '''Manually add a constant of given name to internal list of contants. Value is drawn from kwargs.'''
         n = get_name(name)
         if kwargs.has_key(n) and isinstance(kwargs[n], Constant): c = kwargs[n]
         else: c = Constant(name, **kwargs) # raises KeyError if not a constant
         self.consts[c.name] = c
+    
     def order_terms(self, terms):
         '''Reorder terms to obey (const1,const2,...,prm) ordering.'''
         def cmp(x,y):
@@ -156,16 +169,19 @@ class LinearEquation:
             for ti in t[:-1]:
                 assert(type(ti) is not str or self.consts.has_key(get_name(ti)))
         return terms
+    
     def eval_consts(self, const_list, wgts=1.):
         '''Multiply out constants (and wgts) for placing in matrix.'''
         const_list = [self.consts[get_name(c)].get_val(c) for c in const_list]
         return wgts * reduce(lambda x,y: x*y, const_list, 1.)
+    
     def put_matrix(self, m, eqnum, prm_order, re_im_split=True):
         '''Place this equation in line eqnum of pre-made (# eqs,# prms) matrix m.'''
         xs,ys,vals = self.sparse_form(eqnum, prm_order, re_im_split=re_im_split)
         ones = np.ones_like(m[0,0])
         m[xs,ys] = [v * ones for v in vals] # XXX ugly
         return
+    
     def sparse_form(self, eqnum, prm_order, re_im_split=True):
         xs, ys, vals = [], [], []
         for term in self.terms:
@@ -176,6 +192,7 @@ class LinearEquation:
                 x,y,val = p.sparse_form(term[-1], eqnum, prm_order, f, re_im_split)
             xs += x; ys += y; vals += val
         return xs, ys, vals
+    
     def eval(self, sol):
         '''Given dict of parameter solutions, evaluate this equation.'''
         rv = 0
@@ -187,9 +204,26 @@ class LinearEquation:
             rv += total
         return rv
         
+
 class LinearSolver:
-    '''Estimate parameters using (AtA)^-1At)'''
+
     def __init__(self, data, wgts={}, sparse=False, **kwargs):
+        """Set up a linear system of equations of the form 1*a + 2*b + 3*c = 4.
+
+        Args:
+            data: Dictionary that maps linear equations, written as valid python-interpetable strings 
+                that include the variables in question, to (complex) numbers or numpy arrarys. 
+                Variables with trailing underscores '_' are interpreted as complex conjugates.
+            wgts: Dictionary that maps equation strings from data to real weights to apply to each linear 
+                equation. Any equation not in wgts gets a weight of 1.0. Defaults to {} (i.e. all 1.0s).
+            sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
+                May be faster for certain systems of equations. 
+            **kwargs: keyword arguments of constants (python variables in keys of data that 
+                are not to be solved for)
+
+        Returns:
+            None
+        """
         self.data = data
         self.sparse = sparse
         for k in wgts: assert(np.iscomplexobj(wgts[k]) == False) # tricky errors happen if wgts are complex
@@ -212,6 +246,7 @@ class LinearSolver:
         self.dtype = reduce(np.promote_types, [d.dtype if hasattr(d,'dtype') else type(d) for d in numerical_input])
         if self.re_im_split: self.dtype = np.real(np.ones(1, dtype=self.dtype)).dtype
         self.shape = self._shape()
+
     def _shape(self):
         '''Get broadcast shape of constants, weights for last dim of A'''
         sh = []
@@ -225,6 +260,7 @@ class LinearSolver:
             if len(shk) > len(sh): sh += [0] * (len(shk)-len(sh))
             for i in xrange(min(len(sh),len(shk))): sh[i] = max(sh[i],shk[i])
         return tuple(sh)
+
     def _A_shape(self):
         '''Get shape of A matrix (# eqs, # prms, data.size). Now always 3D.'''
         try: sh = (reduce(lambda x,y: x*y, self.shape),) # flatten data dimensions so A is always 3D
@@ -232,6 +268,7 @@ class LinearSolver:
         if self.re_im_split: 
             return (2*len(self.eqs),2*len(self.prm_order))+sh
         else: return (len(self.eqs),len(self.prm_order))+sh
+
     def get_A(self):
         '''Return A matrix for A*x=y.'''
         A = np.zeros(self._A_shape(), dtype=self.dtype)
@@ -241,12 +278,14 @@ class LinearSolver:
         for x,y,v in zip(xs,ys,[v * ones for v in vals]):
             A[x,y] += v # XXX ugly
         return A
+
     def sparse_form(self):
         xs, ys, vals = [], [], []
         for i,eq in enumerate(self.eqs):
             x,y,val = eq.sparse_form(i, self.prm_order, self.re_im_split)
             xs += x; ys += y; vals += val
         return xs, ys, vals
+
     def get_A_sparse(self):
         xs,ys,vals = self.sparse_form()
         ones = np.ones(self._A_shape()[2:],dtype=self.dtype)
@@ -254,6 +293,7 @@ class LinearSolver:
             if type(val) is not np.ndarray:
                 vals[n] = ones*val
         return np.array(xs), np.array(ys), np.array(vals).T
+    
     def get_weighted_data(self):
         '''Return y = data * wgt as a 2D vector, regardless of original data/wgt shape.'''
         d = np.array([self.data[k] for k in self.keys])
@@ -269,8 +309,17 @@ class LinearSolver:
             rv[::2],rv[1::2] = d.real, d.imag
             return rv
         else: return d
+    
     def solve(self, rcond=1e-10, verbose=False): # XXX add prm for used AtAiAt for all k?
-        '''Compute x' = (At A)^-1 At * y, returning x' as dict of prms:values.'''
+        """Compute x' = (At A)^-1 At * y, returning x' as dict of prms:values.
+
+        Args:
+            rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
+                or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
+
+        Returns:
+            sol: a dictionary of solutions with variables as keys
+        """
         y = self.get_weighted_data()
         Ashape = self._A_shape()
         x = np.empty((Ashape[1],y.shape[-1]), dtype=self.dtype)
@@ -368,14 +417,31 @@ def conjterm(term, mode='amp'):
     terms = [[f,t[:-1]] if t.endswith('_') else [t] for t in term]
     return reduce(lambda x,y: x+y, terms)
 
-def jointerms(terms): return '+'.join(['*'.join(map(str,t)) for t in terms])
+def jointerms(terms): 
+    '''TODO: document'''
+    return '+'.join(['*'.join(map(str,t)) for t in terms])
+
 
 class LogProductSolver: 
-    '''For equations that are purely products (e.g. x*y*z = m), use 
-    logarithms to linearize.  For complex variables, a trailing '_' in
-    the name is used to denote conjugation (e.g. x*y_ parses as x * y.conj()).
-    For LogProductSolver to work'''
+
     def __init__(self, data, wgts={}, sparse=False, **kwargs):
+    """Set up a nonlinear system of equations of the form a*b = 1.0 to linearze via logarithm.
+
+    Args:
+        data: Dictionary that maps nonlinear product equations, written as valid python-interpetable 
+            strings that include the variables in question, to (complex) numbers or numpy arrarys. 
+            Variables with trailing underscores '_' are interpreted as complex conjugates (e.g. x*y_ 
+            parses as x * y.conj()).
+        wgts: Dictionary that maps equation strings from data to real weights to apply to each 
+            equation. Any equation not in wgts gets a weight of 1.0. Defaults to {} (i.e. all 1.0s).
+        sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
+            May be faster for certain systems of equations. 
+        **kwargs: keyword arguments of constants (python variables in keys of data that 
+            are not to be solved for)
+
+    Returns:
+        None
+    """
         keys = data.keys()
         eqs = [ast_getterms(ast.parse(k, mode='eval')) for k in keys]
         logamp, logphs = {}, {}
@@ -394,7 +460,17 @@ class LogProductSolver:
             logamp_consts[k], logphs_consts[k] = c.real, c.imag
         self.ls_amp = LinearSolver(logamp, logampw, sparse=sparse, **logamp_consts)
         self.ls_phs = LinearSolver(logphs, logphsw, sparse=sparse, **logphs_consts)
+    
     def solve(self, rcond=1e-10, verbose=False):
+        """Solve both amplitude and phase by taking the log of both sides to linearize.
+
+        Args:
+            rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
+                or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
+
+        Returns:
+            sol: a dictionary of complex solutions with variables as keys
+        """
         sol_amp = self.ls_amp.solve(rcond=rcond, verbose=verbose)
         sol_phs = self.ls_phs.solve(rcond=rcond, verbose=verbose)
         sol = {}
@@ -412,14 +488,33 @@ def taylor_expand(terms, consts={}, prepend='d'):
             taylors.append(term[:i]+[prepend+t]+term[i+1:])
     return taylors
 
+
 # XXX make a version of linproductsolver that taylor expands in e^{a+bi} form
 class LinProductSolver:
-    '''For equations that are sums of products (e.g. x*y*z + a*b*c = m), use 
-    1st order Taylor expansion to linearize.  For complex variables, a trailing '_' in
-    the name is used to denote conjugation (e.g. x*y_ parses as x * y.conj()).
-    Approximate parameter solutions needs to be passed in as sols. No 
-    parentheses are allowed (expand manually). '''
+
     def __init__(self, data, sol0, wgts={}, sparse=False, **kwargs):
+        """Set up a nonlinear system of equations of the form a*b + c*d = 1.0 
+        to linearize via Taylor expansion and solve iteratively using the Gauss-Newton algorithm.
+
+        Args:
+            data: Dictionary that maps nonlinear product equations, written as valid python-interpetable 
+                strings that include the variables in question, to (complex) numbers or numpy arrarys. 
+                Variables with trailing underscores '_' are interpreted as complex conjugates (e.g. x*y_ 
+                parses as x * y.conj()).
+            sol0: Dictionary mapping all variables (as keyword strings) to their starting guess values.
+                This is the point that is Taylor expanded around, so it must be relatively close to the
+                true chi^2 minimizing solution. In the same format as that produced by 
+                linsolve.LogProductSolver.solve() or linsolve.LinProductSolver.solve().
+            wgts: Dictionary that maps equation strings from data to real weights to apply to each 
+                equation. Any equation not in wgts gets a weight of 1.0. Defaults to {} (i.e. all 1.0s).
+            sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
+                May be faster for certain systems of equations. 
+            **kwargs: keyword arguments of constants (python variables in keys of data that 
+                are not to be solved for)
+
+        Returns:
+            None
+        """
         self.prepend = 'd' # XXX make this something hard to collide with
         self.data, self.wgts, self.sparse, self.keys = data, wgts, sparse, data.keys()
         self.init_kwargs, self.sols_kwargs = kwargs, deepcopy(kwargs)
@@ -488,7 +583,7 @@ class LinProductSolver:
         return ans0
 
     def solve(self, rcond=1e-10, verbose=False):
-        '''Executes a LinearSolver on the taylor-expanded system of equations, updating sol0 and returning sol.'''
+        '''Executes a LinearSolver on the taylor-expanded system of equations, improving sol0 to get sol.'''
         dsol = self.ls.solve(rcond=rcond, verbose=verbose)
         sol = {}
         for dk in dsol:
@@ -511,8 +606,22 @@ class LinProductSolver:
         return self.ls._chisq(sol, data, wgts, self.eval)
 
     def solve_iteratively(self, conv_crit=1e-10, maxiter=50, verbose=False):
-        '''Repeatedly solves and updates linsolve until convergence or maxiter is reached. 
-        Returns a meta object containing the number of iterations, chisq, and convergence criterion.'''
+        """Repeatedly solves and updates linsolve until convergence or maxiter is reached. 
+        Returns a meta object containing the number of iterations, chisq, and convergence criterion.
+
+        Args:
+            conv_crit: A convergence criterion (default 1e-10) below which to stop iterating. 
+                Converegence is measured L2-norm of the change in the solution of all the variables
+                divided by the L2-norm of the solution itself.
+            maxiter: An integer maximum number of iterations to perform before quitting. Default 50.
+
+        Returns: meta, sol
+            meta: a dictionary with metadata about the solution, including
+                iter: the number of iterations taken to reach convergence (or maxiter)
+                chisq: the chi^2 of the solution produced by the final iteration
+                conv_crit: the convergence criterion evaluated at the final iteration
+            sol: a dictionary of complex solutions with variables as keys
+        """
         for i in range(1,maxiter+1):
             if verbose: print 'Beginning iteration %d/%d' % (i,maxiter)
             new_sol = self.solve(rcond=conv_crit, verbose=verbose) # XXX is rcond=conv_crit correct?
