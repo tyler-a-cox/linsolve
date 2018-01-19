@@ -4,3 +4,4 @@ dist/*
 *.pyc
 *GIT_INFO
 *.coverage
+*.ipynb_checkpoints*
