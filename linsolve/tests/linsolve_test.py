@@ -405,10 +405,10 @@ class TestLinProductSolver(unittest.TestCase):
         np.testing.assert_almost_equal(sol['y'], y, 2)
         np.testing.assert_almost_equal(sol['z'], z, 2)
     def test_sums_of_products(self):
-        x = np.arange(1,3)*(1.0+1.0j); x.shape=(1,2) 
-        y = np.arange(1,3)*(2.0-3.0j); y.shape=(1,2)
-        z = np.arange(1,3)*(3.0-9.0j); z.shape=(1,2)
-        w = np.arange(1,3)*(4.0+2.0j); w.shape=(1,2)
+        x = np.arange(1,31)*(1.0+1.0j); x.shape=(10,3) 
+        y = np.arange(1,31)*(2.0-3.0j); y.shape=(10,3)
+        z = np.arange(1,31)*(3.0-9.0j); z.shape=(10,3)
+        w = np.arange(1,31)*(4.0+2.0j); w.shape=(10,3)
         x_,y_,z_,w_ = map(np.conjugate,(x,y,z,w))
         expressions = ['x*y+z*w', '2*x_*y_+z*w-1.0j*z*w', '2*x*w', '1.0j*x + y*z', '-1*x*z+3*y*w*x+y', '2*w_', '2*x_ + 3*y - 4*z']
         data = {}
