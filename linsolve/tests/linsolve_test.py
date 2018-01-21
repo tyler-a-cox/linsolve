@@ -35,6 +35,12 @@ class TestLinSolve(unittest.TestCase):
         self.assertEqual(terms, [[1,'y','z'],[1,'dy','z'],[1,'y','dz']])
         terms = linsolve.taylor_expand([[1,'y','z']],consts={'y':3}, prepend='d')
         self.assertEqual(terms, [[1,'y','z'],[1,'y','dz']])
+    def test_verify_weights(self):
+        self.assertEqual(linsolve.verify_weights({},['a']), {'a':1})
+        self.assertEqual(linsolve.verify_weights(None,['a']), {'a':1})
+        self.assertEqual(linsolve.verify_weights({'a':10.0},['a']), {'a': 10.0})
+        self.assertRaises(AssertionError, linsolve.verify_weights, {'a':1.0+1.0j}, ['a'])
+        self.assertRaises(AssertionError, linsolve.verify_weights, {'a':1.0}, ['a', 'b'])
     
 class TestLinearEquation(unittest.TestCase):
     def test_basics(self):
@@ -59,32 +65,6 @@ class TestLinearEquation(unittest.TestCase):
     def test_unary(self):
         le = linsolve.LinearEquation('-a*x-b*y',a=1,b=2)
         self.assertEqual(le.terms, [[-1,'a','x'],[-1,'b','y']])
-    def test_matrix_line(self):
-        le = linsolve.LinearEquation('x-y')
-        m = np.zeros((1,2), dtype=np.float)
-        le.put_matrix(m,0,{'x':0,'y':1}, False)
-        np.testing.assert_equal(m[0], np.array([1,-1.]))
-        le = linsolve.LinearEquation('a*x-b*y',a=2,b=4)
-        m = np.zeros((1,2), dtype=np.float)
-        le.put_matrix(m,0,{'x':0,'y':1}, False)
-        np.testing.assert_equal(m[0], np.array([2,-4.]))
-        le = linsolve.LinearEquation('a*x-b*y',a=2,b=4)
-        m = np.zeros((1,2), dtype=np.float)
-        le.put_matrix(m,0,{'x':1,'y':0}, False)
-        np.testing.assert_equal(m[0], np.array([-4,2.]))
-        le = linsolve.LinearEquation('a*b*c*x-b*y',a=2,b=4,c=3)
-        m = np.zeros((2,4), dtype=np.float)
-        le.put_matrix(m,0,{'x':0,'y':1}, True)
-        np.testing.assert_equal(m, np.array([[24,0.,-4,0],[0,24,0,-4]]))
-    def test_conj_matrix_line(self):
-        le = linsolve.LinearEquation('x_-y')
-        m = np.zeros((2,4), dtype=np.float)
-        le.put_matrix(m,0,{'x':0,'y':1}, True)
-        np.testing.assert_equal(m, np.array([[1,0,-1.,0],[0,-1,0,-1]]))
-        le = linsolve.LinearEquation('x-y_')
-        m = np.zeros((2,4), dtype=np.float)
-        le.put_matrix(m,0,{'x':0,'y':1}, True)
-        np.testing.assert_equal(m, np.array([[1,0,-1.,0],[0,1,0,1]]))
     def test_order_terms(self):
         le = linsolve.LinearEquation('x+y')
         terms = [[1,1,'x'],[1,1,'y']]
@@ -245,19 +225,30 @@ class TestLinearSolver(unittest.TestCase):
     def test_dtypes(self):
         ls = linsolve.LinearSolver({'x_': 1.0+1.0j}, sparse=self.sparse)
         self.assertEqual(ls.dtype,float)
+        self.assertEqual(type(ls.solve()['x']), np.complex128)
+
         ls = linsolve.LinearSolver({'x': 1.0+1.0j}, sparse=self.sparse)
         self.assertEqual(ls.dtype,complex)
+        self.assertEqual(type(ls.solve()['x']), np.complex128)
+
         ls = linsolve.LinearSolver({'x_': np.ones(1,dtype=np.complex64)[0]}, sparse=self.sparse)
         self.assertEqual(ls.dtype,np.float32)
+        self.assertEqual(type(ls.solve()['x']), np.complex64)
+
         ls = linsolve.LinearSolver({'x': np.ones(1,dtype=np.complex64)[0]}, sparse=self.sparse)
         self.assertEqual(ls.dtype,np.complex64)
+        self.assertEqual(type(ls.solve()['x']), np.complex64)
+
         ls = linsolve.LinearSolver({'c*x': 1.0}, c=1.0+1.0j, sparse=self.sparse)
-        self.assertEqual(ls.dtype,complex)
+        self.assertEqual(ls.dtype,np.complex128)
+        self.assertEqual(type(ls.solve()['x']), np.complex128)
+
         d = {'c*x': np.ones(1,dtype=np.float32)[0]}
         wgts = {'c*x': np.ones(1,dtype=np.float64)[0]}
         c = np.ones(1,dtype=np.float32)[0]
         ls = linsolve.LinearSolver(d, wgts=wgts, c=c, sparse=self.sparse)
         self.assertEqual(ls.dtype,np.float64)
+        self.assertEqual(type(ls.solve()['x']), np.float64)
 
 class TestLinearSolverSparse(TestLinearSolver):
     def setUp(self):

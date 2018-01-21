@@ -84,13 +84,7 @@ class Parameter:
     def __init__(self, name):
         '''Container for parameters that are to be solved for.'''
         self.name = get_name(name)
-    
-    def put_matrix(self, name, m, eqnum, prm_order, prefactor, re_im_split=True):
-        '''Return line for A matrix in A*x=y.  Handles conj if name='prmname_' is 
-        requested instead of name='prmname'.'''
-        xs,ys,vals = self.sparse_form(name, eqnum, prm_order, prefactor, re_im_split=re_im_split)
-        m[xs,ys,0] = vals
-    
+
     def sparse_form(self, name, eqnum, prm_order, prefactor, re_im_split=True):
         xs,ys,vals = [], [], []
         # separated into real and imaginary parts iff one of the variables is conjugated with "_"
@@ -116,7 +110,7 @@ class Parameter:
         '''Extract prm value from appropriate row of x solution.'''
         if x.shape[0] > len(prm_order): # detect that we are splitting up real and imaginary parts
             ordr,ordi = 2*prm_order[self.name], 2*prm_order[self.name]+1
-            return {self.name: x[ordr] + 1j*x[ordi]}
+            return {self.name: x[ordr] + np.complex64(1.0j)*x[ordi]}
         else: return {self.name: x[prm_order[self.name]]}
 
 
@@ -128,7 +122,7 @@ class LinearEquation:
         if type(val) is str:
             n = ast.parse(val, mode='eval')
             val = ast_getterms(n)
-        self.wgts = kwargs.pop('wgts',1.)
+        self.wgts = kwargs.pop('wgts',np.float32(1.))
         self.has_conj = False
         self.process_terms(val, **kwargs)
     
@@ -169,27 +163,22 @@ class LinearEquation:
             for ti in t[:-1]:
                 assert(type(ti) is not str or self.consts.has_key(get_name(ti)))
         return terms
-    
-    def eval_consts(self, const_list, wgts=1.):
+
+    def eval_consts(self, const_list, wgts=np.float32(1.)):
         '''Multiply out constants (and wgts) for placing in matrix.'''
         const_list = [self.consts[get_name(c)].get_val(c) for c in const_list]
-        return wgts * reduce(lambda x,y: x*y, const_list, 1.)
-    
-    def put_matrix(self, m, eqnum, prm_order, re_im_split=True):
-        '''Place this equation in line eqnum of pre-made (# eqs,# prms) matrix m.'''
-        xs,ys,vals = self.sparse_form(eqnum, prm_order, re_im_split=re_im_split)
-        ones = np.ones_like(m[0,0])
-        m[xs,ys] = [v * ones for v in vals] # XXX ugly
-        return
-    
+        return wgts * reduce(lambda x,y: x*y, const_list, np.float32(1.))
+        #return 1. * reduce(lambda x,y: x*y, const_list, 1.)
+
     def sparse_form(self, eqnum, prm_order, re_im_split=True):
         xs, ys, vals = [], [], []
         for term in self.terms:
             p = self.prms[get_name(term[-1])]
             f = self.eval_consts(term[:-1], self.wgts)
-            try: x,y,val = p.sparse_form(term[-1], eqnum, prm_order, f.flatten(), re_im_split)
-            except(AttributeError): # happens if f is a scalar
+            if len(f.flatten()) == 1:
                 x,y,val = p.sparse_form(term[-1], eqnum, prm_order, f, re_im_split)
+            else:
+                x,y,val = p.sparse_form(term[-1], eqnum, prm_order, f.flatten(), re_im_split)
             xs += x; ys += y; vals += val
         return xs, ys, vals
     
@@ -204,6 +193,20 @@ class LinearEquation:
             rv += total
         return rv
         
+
+def verify_weights(wgts, keys):
+    '''Given wgts and keys, ensure wgts have all keys and are all real.
+    If wgts == {} or None, return all 1s.'''
+    if wgts is None or wgts == {}:
+        return {k: np.float32(1.) for k in keys}
+        #return {k: 1 for k in keys}
+        #return {k: np.array([1],dtype=np.float32)[0] for k in keys}
+    else:
+        for k in keys:
+            assert(wgts.has_key(k)) # must have weights for all keys
+            assert(np.iscomplexobj(wgts[k]) == False) # tricky errors happen if wgts are complex
+        return wgts
+
 
 class LinearSolver:
 
@@ -225,23 +228,26 @@ class LinearSolver:
             None
         """
         self.data = data
-        self.sparse = sparse
-        for k in wgts: assert(np.iscomplexobj(wgts[k]) == False) # tricky errors happen if wgts are complex
-        self.wgts = wgts
         self.keys = data.keys()
-        self.eqs = [LinearEquation(k,wgts=self.wgts.get(k,1.), **kwargs) for k in self.keys]
+        self.sparse = sparse
+        self.wgts = verify_weights(wgts, self.keys)
+        self.eqs = [LinearEquation(k,wgts=self.wgts[k], **kwargs) for k in self.keys]
         # XXX add ability to have more than one measurment for a key=equation
         self.prms = {}
-        for eq in self.eqs: self.prms.update(eq.prms)
+        for eq in self.eqs: 
+            self.prms.update(eq.prms)
         self.consts = {}
-        for eq in self.eqs: self.consts.update(eq.consts) 
+        for eq in self.eqs: 
+            self.consts.update(eq.consts) 
         self.prm_order = {}
-        for i,p in enumerate(self.prms): self.prm_order[p] = i
+        for i,p in enumerate(self.prms): 
+            self.prm_order[p] = i
 
         # infer dtype for later arrays
         self.re_im_split = kwargs.pop('re_im_split',False)
         #go through and figure out if any variables are conjugated
-        for eq in self.eqs: self.re_im_split |= eq.has_conj
+        for eq in self.eqs: 
+            self.re_im_split |= eq.has_conj
         numerical_input = self.data.values() + self.consts.values() + self.wgts.values()
         self.dtype = reduce(np.promote_types, [d.dtype if hasattr(d,'dtype') else type(d) for d in numerical_input])
         if self.re_im_split: self.dtype = np.real(np.ones(1, dtype=self.dtype)).dtype
@@ -263,8 +269,10 @@ class LinearSolver:
 
     def _A_shape(self):
         '''Get shape of A matrix (# eqs, # prms, data.size). Now always 3D.'''
-        try: sh = (reduce(lambda x,y: x*y, self.shape),) # flatten data dimensions so A is always 3D
-        except(TypeError): sh = (1,)
+        try: 
+            sh = (reduce(lambda x,y: x*y, self.shape),) # flatten data dimensions so A is always 3D
+        except(TypeError): 
+            sh = (1,)
         if self.re_im_split: 
             return (2*len(self.eqs),2*len(self.prm_order))+sh
         else: return (len(self.eqs),len(self.prm_order))+sh
@@ -283,6 +291,7 @@ class LinearSolver:
         xs, ys, vals = [], [], []
         for i,eq in enumerate(self.eqs):
             x,y,val = eq.sparse_form(i, self.prm_order, self.re_im_split)
+            # print 'val:', val
             xs += x; ys += y; vals += val
         return xs, ys, vals
 
@@ -404,10 +413,13 @@ class LinearSolver:
     
     def chisq(self, sol, data=None, wgts=None):
         """Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as 1/sigma. 
-        Empty weights means sigma=1. Uses the stored data and weights unless otherwise overwritten."""
-        if data is None: data = self.data
-        if wgts is None: wgts = self.wgts
-        return self._chisq(sol, data,wgts,self.eval)        
+        wgts = {} means sigma = 1. Default uses the stored data and weights unless otherwise overwritten."""
+        if data is None: 
+            data = self.data
+        if wgts is None: 
+            wgts = self.wgts
+        wgts = verify_weights(wgts, data.keys())
+        return self._chisq(sol, data, wgts, self.eval)
         
 
 # XXX need to add support for conjugated constants...maybe this already works because we have conjugated constants inherited form taylor expansion
@@ -443,6 +455,7 @@ class LogProductSolver:
         None
     """
         keys = data.keys()
+        wgts = verify_weights(wgts, keys)
         eqs = [ast_getterms(ast.parse(k, mode='eval')) for k in keys]
         logamp, logphs = {}, {}
         logampw, logphsw = {}, {}
@@ -516,7 +529,8 @@ class LinProductSolver:
             None
         """
         self.prepend = 'd' # XXX make this something hard to collide with
-        self.data, self.wgts, self.sparse, self.keys = data, wgts, sparse, data.keys()
+        self.data, self.sparse, self.keys = data, sparse, data.keys()
+        self.wgts = verify_weights(wgts, self.keys)
         self.init_kwargs, self.sols_kwargs = kwargs, deepcopy(kwargs)
         self.sols_kwargs.update(sol0)
         self.all_terms, self.taylors, self.taylor_keys = self.gen_taylors()
@@ -600,9 +614,12 @@ class LinProductSolver:
     
     def chisq(self, sol, data=None, wgts=None):
         '''Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as 1/sigma. 
-        Empty weights means sigma=1. Uses the stored data and weights unless otherwise overwritten.'''
-        if data is None: data = self.data
-        if wgts is None: wgts = self.wgts
+        wgts = {} means sigma = 1. Uses the stored data and weights unless otherwise overwritten.'''
+        if data is None: 
+            data = self.data
+        if wgts is None: 
+            wgts = self.wgts
+        wgts = verify_weights(wgts, data.keys())
         return self.ls._chisq(sol, data, wgts, self.eval)
 
     def solve_iteratively(self, conv_crit=1e-10, maxiter=50, verbose=False):
