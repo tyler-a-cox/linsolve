@@ -23,6 +23,8 @@ LinearSolver solves linear equations of the form 'a*x + b*y + c*z'.
 LogProductSolver uses logrithms to linearize equations of the form 'x*y*z'.
 LinProductSolver uses symbolic Taylor expansion to linearize equations of the
 form 'x*y + y*z'.
+
+For more detail on usage, see linsolve_example.ipynb
 '''
 
 import numpy as np
@@ -171,6 +173,8 @@ class LinearEquation:
         #return 1. * reduce(lambda x,y: x*y, const_list, 1.)
 
     def sparse_form(self, eqnum, prm_order, re_im_split=True):
+        '''Returns the row and col information and the values of coefficients to build up 
+        part of the sparse (CSR) reprentation of the A matrix corresponding to this equation.'''
         xs, ys, vals = [], [], []
         for term in self.terms:
             p = self.prms[get_name(term[-1])]
@@ -199,8 +203,6 @@ def verify_weights(wgts, keys):
     If wgts == {} or None, return all 1s.'''
     if wgts is None or wgts == {}:
         return {k: np.float32(1.) for k in keys}
-        #return {k: 1 for k in keys}
-        #return {k: np.array([1],dtype=np.float32)[0] for k in keys}
     else:
         for k in keys:
             assert(wgts.has_key(k)) # must have weights for all keys
@@ -288,6 +290,8 @@ class LinearSolver:
         return A
 
     def sparse_form(self):
+        '''Returns a lists of lists of row and col numbers and coefficients in order to
+        express the linear system as a CSR sparse matrix.'''
         xs, ys, vals = [], [], []
         for i,eq in enumerate(self.eqs):
             x,y,val = eq.sparse_form(i, self.prm_order, self.re_im_split)
@@ -296,6 +300,7 @@ class LinearSolver:
         return xs, ys, vals
 
     def get_A_sparse(self):
+        '''Fixes dimension needed for CSR sparse matrix representation.'''
         xs,ys,vals = self.sparse_form()
         ones = np.ones(self._A_shape()[2:],dtype=self.dtype)
         for n,val in enumerate(vals): 
@@ -430,7 +435,7 @@ def conjterm(term, mode='amp'):
     return reduce(lambda x,y: x+y, terms)
 
 def jointerms(terms): 
-    '''TODO: document'''
+    '''String that joins lists of lists of terms as the sum of products.'''
     return '+'.join(['*'.join(map(str,t)) for t in terms])
 
 
