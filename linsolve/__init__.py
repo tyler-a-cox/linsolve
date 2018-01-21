@@ -437,23 +437,23 @@ def jointerms(terms):
 class LogProductSolver: 
 
     def __init__(self, data, wgts={}, sparse=False, **kwargs):
-    """Set up a nonlinear system of equations of the form a*b = 1.0 to linearze via logarithm.
+        """Set up a nonlinear system of equations of the form a*b = 1.0 to linearze via logarithm.
 
-    Args:
-        data: Dictionary that maps nonlinear product equations, written as valid python-interpetable 
-            strings that include the variables in question, to (complex) numbers or numpy arrarys. 
-            Variables with trailing underscores '_' are interpreted as complex conjugates (e.g. x*y_ 
-            parses as x * y.conj()).
-        wgts: Dictionary that maps equation strings from data to real weights to apply to each 
-            equation. Any equation not in wgts gets a weight of 1.0. Defaults to {} (i.e. all 1.0s).
-        sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
-            May be faster for certain systems of equations. 
-        **kwargs: keyword arguments of constants (python variables in keys of data that 
-            are not to be solved for)
+        Args:
+            data: Dictionary that maps nonlinear product equations, written as valid python-interpetable 
+                strings that include the variables in question, to (complex) numbers or numpy arrarys. 
+                Variables with trailing underscores '_' are interpreted as complex conjugates (e.g. x*y_ 
+                parses as x * y.conj()).
+            wgts: Dictionary that maps equation strings from data to real weights to apply to each 
+                equation. Any equation not in wgts gets a weight of 1.0. Defaults to {} (i.e. all 1.0s).
+            sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
+                May be faster for certain systems of equations. 
+            **kwargs: keyword arguments of constants (python variables in keys of data that 
+                are not to be solved for)
 
-    Returns:
-        None
-    """
+        Returns:
+            None
+        """
         keys = data.keys()
         wgts = verify_weights(wgts, keys)
         eqs = [ast_getterms(ast.parse(k, mode='eval')) for k in keys]
