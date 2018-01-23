@@ -27,7 +27,7 @@ In this case, our linear system of equations can be written as
 <img align='center' src="imgs/linear_model.png" width=300/>
 
 where `b_1` is the slope and `b_2` is the offset, and the `A` matrix contains the mapping
-from model vector `b` to data vector `y`. In our case, the `a_x1` values are the x-values of the data points, and the `a_x2` values are equal to unity. Let's assume the data vector measurements are `y_1 = 2`, `y_2 = 4` and `y_3 = 7`, and their corresponding dependent variable values are `a_11 = 0`, `a_12 = 2` and `a_13 = 4`.
+from model vector `b` to data vector `y`. In our case, the `a_x1` values are the x-values of the data points, and the `a_x2` values are equal to unity. Let's assume the data vector measurements are `y_1 = 2`, `y_2 = 4` and `y_3 = 7`, and their corresponding dependent variable values are `a_11 = 0`, `a_21 = 2` and `a_31 = 4`.
 
 <img align='center' src="imgs/points.png" width=300/>
 
