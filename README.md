@@ -13,7 +13,7 @@ The solvers in `linsolve` include `LinearSolver`, `LogProductSolver`, and `LinPr
 `LinProductSolver` uses symbolic Taylor expansion to linearize equations of the
 form `'x*y + y*z'`.
 
-See `linsolve_example.ipynb` for a tutorial on how to use these functionalities.
+See [linsolve_example.ipynb](linsolve_example.ipynb) for a tutorial on how to use these functionalities.
 
 ---
 
@@ -36,19 +36,20 @@ First we setup a data dictionary, which contains as keys strings of the RHS of o
 and as values the y-data measurements:
 
 ```python
-data = {'a_11*b_1 + a_12*b_2': 2.0, 'a_21*b_1 + a_22*b_2':4.0, 'a_31*b_1 + a_32*b_2':7.0}
+data = {'b_2': 2.0, '2.0*b_1 + b_2': 4.0, '4*b_1 + b_2': 7.0}
 ```
 
-Next we create a constants dictionary that holds all of the parameters we don't want to solve for (i.e. the values of the `A` matrix):
+Alternatively, we can write the data dictionary more generally by also writing dictionary of constants we don't want to solve for (i.e. the values of the `A` matrix):
 
 ```python
-consts = {'a_11': 0.0, 'a_21': 2.0, 'a_31':4.0, 'a_12':1.0, 'a_22':1.0, 'a_32':1.0}
+data = {'a_11*b_1 + a_12*b_2': 2.0, 'a_21*b_1 + a_22*b_2': 4.0, 'a_31*b_1 + a_32*b_2': 7.0}
+consts = {'a_11': 0.0, 'a_21': 2.0, 'a_31': 4.0, 'a_12': 1.0, 'a_22': 1.0, 'a_32': 1.0}
 ```
 
-We then feed these into `linsolve.LinearSolver`, passing the `consts` dictionary as keyword arguments.
+We then feed this into `linsolve.LinearSolver` (optionally passing the `consts` dictionary as keyword arguments.)
 
 ```python
-ls = linsolve.LinearSolver(data, **consts)
+ls = linsolve.LinearSolver(data) # or linsolve.LinearSolver(data, **consts) if we use constants
 solution = ls.solve()
 ```
 
@@ -60,7 +61,9 @@ The output, `solution`, is a dictionary with solution of our model vector:
 
 Weighting of measurements can be implemented through an optional wgts
 dictionary that parallels the construction of data. To see a more in-depth example,
-please consult the `linsolve_example.ipynb` tutorial.
+please consult the [linsolve_example.ipynb](linsolve_example.ipynb) tutorial.
+
+---
 
 # Package Details
 ## Known Issues and Planned Improvements
@@ -85,10 +88,7 @@ First install dependencies.
 * scipy
 
 ## Install linsolve
-For simple installation, the latest stable version is available via pip using ```pip install linsolve```
-
-### Optionally install the development version
-For the development version, clone the repository using
+Clone the repository using
 ```git clone https://github.com/HERA-Team/linsolve.git```
 
 Navigate into the directory and run ```python setup.py install```.
