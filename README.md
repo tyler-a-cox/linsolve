@@ -11,7 +11,11 @@ The solvers in `linsolve` include `LinearSolver`, `LogProductSolver`, and `LinPr
 `LinearSolver` solves linear equations of the form `'a*x + b*y + c*z'`.
 `LogProductSolver` uses logrithms to linearize equations of the form `'x*y*z'`.
 `LinProductSolver` uses symbolic Taylor expansion to linearize equations of the
-form `'x*y + y*z'`. See `linsolve_example.ipynb` for a tutorial on how to use these functionalities.
+form `'x*y + y*z'`.
+
+See `linsolve_example.ipynb` for a tutorial on how to use these functionalities.
+
+---
 
 Below we give a brief example on the general usage of `LinearSolver`.
 
@@ -20,12 +24,12 @@ and a model vector `b` containing parameters we would like to solve for. Let's s
 the problem of fitting a line to three data points, which amounts to solving for a slope and an offset.
 In this case, our linear system of equations can be written as
 
-<img src="imgs/linear_model.png" width=500/>
+<img align='center' src="imgs/linear_model.png" width=300/>
 
 where `b_1` is the slope and `b_2` is the offset, and the `A` matrix contains the mapping
-from model vector `b` to data vector `y`. In our case, the `a_1x` values are the x-values of the data points, and the `a_x21` values are equal to 1. Let's assume the data vector measurements are `y_1 = 2`, `y_2 = 4` and `y_3 = 7`, and their corresponding dependent variable values are `a_11 = x_1 = 0`, `a_12 = x_2 = 2` and `a_13 = x_3 = 4`.
+from model vector `b` to data vector `y`. In our case, the `a_x1` values are the x-values of the data points, and the `a_x2` values are equal to unity. Let's assume the data vector measurements are `y_1 = 2`, `y_2 = 4` and `y_3 = 7`, and their corresponding dependent variable values are `a_11 = 0`, `a_12 = 2` and `a_13 = 4`.
 
-<img src="imgs/points.png" width=300/>
+<img align='center' src="imgs/points.png" width=300/>
 
 We will use `LinearSolver` to solve this system of equations in the following manner.
 First we setup a data dictionary, which contains as keys strings of the RHS of our linear model equation,
@@ -41,7 +45,7 @@ Next we create a constants dictionary that holds all of the parameters we don't 
 consts = {'a_11': 0.0, 'a_21': 2.0, 'a_31':4.0, 'a_12':1.0, 'a_22':1.0, 'a_32':1.0}
 ```
 
-We then feed these into `linsolve.LinearSolver`, passing the `consts` dictionary as a key-word arguments.
+We then feed these into `linsolve.LinearSolver`, passing the `consts` dictionary as keyword arguments.
 
 ```python
 ls = linsolve.LinearSolver(data, **consts)
