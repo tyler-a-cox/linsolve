@@ -59,11 +59,10 @@ def get_name(s, isconj=False):
 
 
 class Constant:
-
-    def __init__(self, name, **kwargs):
-        '''Container for constants (which can be arrays) in linear equations.'''
+    '''Container for constants (which can be arrays) in linear equations.'''
+    def __init__(self, name, constants):
         self.name = get_name(name)
-        if type(name) is str: self.val = kwargs[self.name]
+        if type(name) is str: self.val = constants[self.name]
         else: self.val = name
         try: self.dtype = self.val.dtype
         except(AttributeError): self.dtype = type(self.val)
@@ -117,39 +116,35 @@ class Parameter:
 
 
 class LinearEquation:
-
+    '''Container for all prms and constants associated with a linear equation.'''
     def __init__(self, val, **kwargs):
-        '''Container for all prms and constants associated with a linear equation.'''
         self.val = val
         if type(val) is str:
             n = ast.parse(val, mode='eval')
             val = ast_getterms(n)
         self.wgts = kwargs.pop('wgts',np.float32(1.))
         self.has_conj = False
-        self.process_terms(val, **kwargs)
-    
-    def process_terms(self, terms, **kwargs):
+        constants = kwargs.pop('constants', kwargs)
+        self.process_terms(val, constants)
+
+    def process_terms(self, terms, constants):
         '''Classify terms from parsed str as Constant or Parameter.'''
         self.consts, self.prms = {}, {}
         for term in terms:
             for t in term:
                 try:
-                    #self.add_const(t, **kwargs) # this is slow if kwargs is big, so trim first
-                    name = get_name(t)
-                    kw = {}
-                    if kwargs.has_key(name): kw[name] = kwargs[name]
-                    self.add_const(t, **kw)
+                    self.add_const(t, constants)
                 except(KeyError): # must be a parameter then
                     p = Parameter(t)
                     self.has_conj |= get_name(t,isconj=True)[-1] # keep track if any prms are conj
                     self.prms[p.name] = p
         self.terms = self.order_terms(terms)
-    
-    def add_const(self, name, **kwargs):
-        '''Manually add a constant of given name to internal list of contants. Value is drawn from kwargs.'''
+
+    def add_const(self, name, constants):
+        '''Manually add a constant of given name to internal list of constants. Value is drawn from constants.'''
         n = get_name(name)
-        if kwargs.has_key(n) and isinstance(kwargs[n], Constant): c = kwargs[n]
-        else: c = Constant(name, **kwargs) # raises KeyError if not a constant
+        if constants.has_key(n) and isinstance(constants[n], Constant): c = constants[n]
+        else: c = Constant(name, constants) # raises KeyError if not a constant
         self.consts[c.name] = c
     
     def order_terms(self, terms):
@@ -233,7 +228,8 @@ class LinearSolver:
         self.keys = data.keys()
         self.sparse = sparse
         self.wgts = verify_weights(wgts, self.keys)
-        self.eqs = [LinearEquation(k,wgts=self.wgts[k], **kwargs) for k in self.keys]
+        constants = kwargs.pop('constants', kwargs)
+        self.eqs = [LinearEquation(k,wgts=self.wgts[k], constants=constants) for k in self.keys]
         # XXX add ability to have more than one measurment for a key=equation
         self.prms = {}
         for eq in self.eqs: 
@@ -472,13 +468,14 @@ class LogProductSolver:
             logamp[eqamp],logphs[eqphs] = dk.real, dk.imag
             try: logampw[eqamp],logphsw[eqphs] = wgts[k], wgts[k]
             except(KeyError): pass
+        constants = kwargs.pop('constants', kwargs)
         logamp_consts, logphs_consts = {}, {}
-        for k in kwargs:
-            c = np.log(kwargs[k]) # log unwraps complex circle at -pi
+        for k in constants:
+            c = np.log(constants[k]) # log unwraps complex circle at -pi
             logamp_consts[k], logphs_consts[k] = c.real, c.imag
-        self.ls_amp = LinearSolver(logamp, logampw, sparse=sparse, **logamp_consts)
-        self.ls_phs = LinearSolver(logphs, logphsw, sparse=sparse, **logphs_consts)
-    
+        self.ls_amp = LinearSolver(logamp, logampw, sparse=sparse, constants=logamp_consts)
+        self.ls_phs = LinearSolver(logphs, logphsw, sparse=sparse, constants=logphs_consts)
+
     def solve(self, rcond=1e-10, verbose=False):
         """Solve both amplitude and phase by taking the log of both sides to linearize.
 
@@ -536,7 +533,8 @@ class LinProductSolver:
         self.prepend = 'd' # XXX make this something hard to collide with
         self.data, self.sparse, self.keys = data, sparse, data.keys()
         self.wgts = verify_weights(wgts, self.keys)
-        self.init_kwargs, self.sols_kwargs = kwargs, deepcopy(kwargs)
+        constants = kwargs.pop('constants', kwargs)
+        self.init_kwargs, self.sols_kwargs = constants, deepcopy(constants)
         self.sols_kwargs.update(sol0)
         self.all_terms, self.taylors, self.taylor_keys = self.gen_taylors()
         self.build_solver(sol0) 
@@ -561,7 +559,7 @@ class LinProductSolver:
             dlin[tk] = self.data[k] #in theory, this will always be replaced with data - ans0 before use
             try: wlin[tk] = self.wgts[k]
             except(KeyError): pass
-        self.ls = LinearSolver(dlin, wgts=wlin, sparse=self.sparse, **self.sols_kwargs)
+        self.ls = LinearSolver(dlin, wgts=wlin, sparse=self.sparse, constants=self.sols_kwargs)
         self.eq_dict = {eq.val: eq for eq in self.ls.eqs} #maps taylor string expressions to linear equations 
         #Now make sure every taylor equation has every relevant constant, even if they don't appear in the derivative terms.
         for k,terms in zip(self.keys, self.all_terms):
@@ -569,9 +567,7 @@ class LinProductSolver:
                 for t in term:
                     t_name = get_name(t)
                     if self.sols_kwargs.has_key(t_name):
-                        #self.eq_dict[self.taylor_keys[k]].add_const(t_name, **self.sols_kwargs)
-                        kw = {t_name: self.sols_kwargs[t_name]}
-                        self.eq_dict[self.taylor_keys[k]].add_const(t_name, **kw)
+                        self.eq_dict[self.taylor_keys[k]].add_const(t_name, self.sols_kwargs)
         self._update_solver(sol0)
 
     def _update_solver(self, sol):
@@ -653,4 +649,3 @@ class LinProductSolver:
                 meta = {'iter': i, 'chisq': self.chisq(new_sol), 'conv_crit': conv}
                 return meta, new_sol
             self._update_solver(new_sol)
-
