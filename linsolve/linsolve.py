@@ -216,8 +216,8 @@ class LinearSolver:
                 that include the variables in question, to (complex) numbers or numpy arrarys. 
                 Variables with trailing underscores '_' are interpreted as complex conjugates.
             wgts: Dictionary that maps equation strings from data to real weights to apply to each 
-                equation. Weights are treated as 1/sigma^2. Any equation not in wgts gets a weight of 1.0. 
-                Defaults to {} (i.e. all 1.0s).
+                equation. Weights are treated as 1/sigma^2. All equations in the data must have a weight 
+                if wgts is not the default, {}, which means all 1.0s.
             sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
@@ -314,7 +314,7 @@ class LinearSolver:
             w.shape += (1,) * (d.ndim-w.ndim)
             d.shape += (1,) * (w.ndim-d.ndim)
             d = d*(w**.5) 
-            # this is w**.5 because A alredy has a factor of w**.5 in it, so 
+            # this is w**.5 because A already has a factor of w**.5 in it, so 
             # (At N^-1 A)^1 At N^1 y ==> (At A)^1 At d (where d is the result of this 
             # function and A is redefined to include half of the weights)
         self._data_shape = d.shape[1:] # store for reshaping sols to original
@@ -451,8 +451,8 @@ class LogProductSolver:
                 Variables with trailing underscores '_' are interpreted as complex conjugates (e.g. x*y_ 
                 parses as x * y.conj()).
             wgts: Dictionary that maps equation strings from data to real weights to apply to each 
-                equation. Weights are treated as 1/sigma^2. Any equation not in wgts gets a weight of 1.0. 
-                Defaults to {} (i.e. all 1.0s).
+                equation. Weights are treated as 1/sigma^2. All equations in the data must have a weight 
+                if wgts is not the default, {}, which means all 1.0s.
             sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
@@ -527,8 +527,8 @@ class LinProductSolver:
                 true chi^2 minimizing solution. In the same format as that produced by 
                 linsolve.LogProductSolver.solve() or linsolve.LinProductSolver.solve().
             wgts: Dictionary that maps equation strings from data to real weights to apply to each 
-                equation. Weights are treated as 1/sigma^2. Any equation not in wgts gets a weight of 1.0. 
-                Defaults to {} (i.e. all 1.0s).
+                equation. Weights are treated as 1/sigma^2. All equations in the data must have a weight 
+                if wgts is not the default, {}, which means all 1.0s.
             sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
