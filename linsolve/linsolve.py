@@ -621,7 +621,7 @@ class LinProductSolver:
         return self._get_ans0(sol, keys=keys)
     
     def chisq(self, sol, data=None, wgts=None):
-        '''Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as 1/sigma. 
+        '''Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as 1/sigma^2. 
         wgts = {} means sigma = 1. Uses the stored data and weights unless otherwise overwritten.'''
         if data is None: 
             data = self.data
