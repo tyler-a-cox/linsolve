@@ -216,7 +216,7 @@ class TestLinearSolver(unittest.TestCase):
         np.testing.assert_equal(chisq, .5)
         x = 1.
         d = {'1*x': 2.0, 'x': 1.0}
-        w = {'1*x': 1.0, 'x': .5**.5}
+        w = {'1*x': 1.0, 'x': .5}
         ls = linsolve.LinearSolver(d, wgts=w, sparse=self.sparse)
         sol = ls.solve()
         chisq = ls.chisq(sol)

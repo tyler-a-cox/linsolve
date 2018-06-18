@@ -164,7 +164,8 @@ class LinearEquation:
     def eval_consts(self, const_list, wgts=np.float32(1.)):
         '''Multiply out constants (and wgts) for placing in matrix.'''
         const_list = [self.consts[get_name(c)].get_val(c) for c in const_list]
-        return wgts * reduce(lambda x,y: x*y, const_list, np.float32(1.))
+        return wgts**.5 * reduce(lambda x,y: x*y, const_list, np.float32(1.))
+        # this has the effect of putting the square root of the weights into each A matrix
         #return 1. * reduce(lambda x,y: x*y, const_list, 1.)
 
     def sparse_form(self, eqnum, prm_order, re_im_split=True):
@@ -214,8 +215,9 @@ class LinearSolver:
             data: Dictionary that maps linear equations, written as valid python-interpetable strings 
                 that include the variables in question, to (complex) numbers or numpy arrarys. 
                 Variables with trailing underscores '_' are interpreted as complex conjugates.
-            wgts: Dictionary that maps equation strings from data to real weights to apply to each linear 
-                equation. Any equation not in wgts gets a weight of 1.0. Defaults to {} (i.e. all 1.0s).
+            wgts: Dictionary that maps equation strings from data to real weights to apply to each 
+                equation. Weights are treated as 1/sigma^2. Any equation not in wgts gets a weight of 1.0. 
+                Defaults to {} (i.e. all 1.0s).
             sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
@@ -305,13 +307,16 @@ class LinearSolver:
         return np.array(xs), np.array(ys), np.array(vals).T
     
     def get_weighted_data(self):
-        '''Return y = data * wgt as a 2D vector, regardless of original data/wgt shape.'''
+        '''Return y = data * wgt**.5 as a 2D vector, regardless of original data/wgt shape.'''
         d = np.array([self.data[k] for k in self.keys])
         if len(self.wgts) > 0:
             w = np.array([self.wgts[k] for k in self.keys])
             w.shape += (1,) * (d.ndim-w.ndim)
             d.shape += (1,) * (w.ndim-d.ndim)
-            d = d*w
+            d = d*(w**.5) 
+            # this is w**.5 because A alredy has a factor of w**.5 in it, so 
+            # (At N^-1 A)^1 At N^1 y ==> (At A)^1 At d (where d is the result of this 
+            # function and A is redefined to include half of the weights)
         self._data_shape = d.shape[1:] # store for reshaping sols to original
         d.shape = (d.shape[0],-1) # Flatten 
         if self.re_im_split:
@@ -406,14 +411,14 @@ class LinearSolver:
     def _chisq(self, sol, data, wgts, evaluator):
         """Internal adaptable chisq calculator."""
         if len(wgts) == 0: sigma2 = {k: 1.0 for k in data.keys()} #equal weights
-        else: sigma2 = {k: wgts[k]**-2 for k in wgts.keys()} 
+        else: sigma2 = {k: wgts[k]**-1 for k in wgts.keys()} 
         evaluated = evaluator(sol, keys=data)
         chisq = 0
         for k in data.keys(): chisq += np.abs(evaluated[k]-data[k])**2 / sigma2[k]
         return chisq
     
     def chisq(self, sol, data=None, wgts=None):
-        """Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as 1/sigma. 
+        """Compute Chi^2 = |obs - mod|^2 / sigma^2 for the specified solution. Weights are treated as 1/sigma^2. 
         wgts = {} means sigma = 1. Default uses the stored data and weights unless otherwise overwritten."""
         if data is None: 
             data = self.data
@@ -446,7 +451,8 @@ class LogProductSolver:
                 Variables with trailing underscores '_' are interpreted as complex conjugates (e.g. x*y_ 
                 parses as x * y.conj()).
             wgts: Dictionary that maps equation strings from data to real weights to apply to each 
-                equation. Any equation not in wgts gets a weight of 1.0. Defaults to {} (i.e. all 1.0s).
+                equation. Weights are treated as 1/sigma^2. Any equation not in wgts gets a weight of 1.0. 
+                Defaults to {} (i.e. all 1.0s).
             sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
@@ -521,7 +527,8 @@ class LinProductSolver:
                 true chi^2 minimizing solution. In the same format as that produced by 
                 linsolve.LogProductSolver.solve() or linsolve.LinProductSolver.solve().
             wgts: Dictionary that maps equation strings from data to real weights to apply to each 
-                equation. Any equation not in wgts gets a weight of 1.0. Defaults to {} (i.e. all 1.0s).
+                equation. Weights are treated as 1/sigma^2. Any equation not in wgts gets a weight of 1.0. 
+                Defaults to {} (i.e. all 1.0s).
             sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
