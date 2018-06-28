@@ -1,3 +1,4 @@
+from __future__ import absolute_import, division, print_function
 from setuptools import setup
 import glob
 import os.path as op
@@ -30,4 +31,4 @@ setup_args = {
 }
 
 if __name__ == '__main__':
-    apply(setup, (), setup_args)
+    setup(**setup_args)
