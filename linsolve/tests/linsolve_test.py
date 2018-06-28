@@ -1,3 +1,4 @@
+from __future__ import absolute_import, division, print_function
 import unittest
 import linsolve
 import numpy as np
@@ -52,8 +53,8 @@ class TestLinearEquation(unittest.TestCase):
         self.assertEqual(le.terms, [['x'],[-1,'y']])
         le = linsolve.LinearEquation('a*x+b*y',a=1,b=2)
         self.assertEqual(le.terms, [['a','x'],['b','y']])
-        self.assertTrue(le.consts.has_key('a'))
-        self.assertTrue(le.consts.has_key('b'))
+        self.assertTrue('a' in le.consts)
+        self.assertTrue('b' in le.consts)
         self.assertEqual(len(le.prms), 2)
         le = linsolve.LinearEquation('a*x-b*y',a=1,b=2)
         self.assertEqual(le.terms, [['a','x'],[-1,'b','y']])
@@ -200,7 +201,7 @@ class TestLinearSolver(unittest.TestCase):
         for eq in d:
             np.testing.assert_almost_equal(d[eq], result[eq])
         result = ls.eval(sol, 'a*x+b*y')
-        np.testing.assert_almost_equal(3*1+1*2, result.values()[0])
+        np.testing.assert_almost_equal(3*1+1*2, list(result.values())[0])
     def test_chisq(self):
         x = 1.
         d = {'x':1, 'a*x':2}
@@ -308,7 +309,7 @@ class TestLogProductSolver(unittest.TestCase):
     def test_no_abs_phs_solve(self):
         x,y,z = 1.+1j, 2.+2j, 3.+3j
         d,w = {'x*y_':x*y.conjugate(), 'x*z_':x*z.conjugate(), 'y*z_':y*z.conjugate()}, {}
-        for k in d.keys(): w[k] = 1.
+        for k in list(d.keys()): w[k] = 1.
         ls = linsolve.LogProductSolver(d,w,sparse=self.sparse)
         sol = ls.solve()
         x,y,z = sol['x'], sol['y'], sol['z']
@@ -331,7 +332,7 @@ class TestLinProductSolver(unittest.TestCase):
     def test_init(self):
         x,y,z = 1.+1j, 2.+2j, 3.+3j
         d,w = {'x*y_':x*y.conjugate(), 'x*z_':x*z.conjugate(), 'y*z_':y*z.conjugate()}, {}
-        for k in d.keys(): w[k] = 1.
+        for k in list(d.keys()): w[k] = 1.
         sol0 = {}
         for k in 'xyz': sol0[k] = eval(k)+.01
         ls = linsolve.LinProductSolver(d,sol0,w,sparse=self.sparse)
@@ -380,7 +381,7 @@ class TestLinProductSolver(unittest.TestCase):
         x,y,z = 1.+1j, 2.+2j, 3.+3j
         #x,y,z = 1., 2., 3.
         d,w = {'x*y_':x*y.conjugate(), 'x*z_':x*z.conjugate(), 'y*z_':y*z.conjugate()}, {}
-        for k in d.keys(): w[k] = 1.
+        for k in list(d.keys()): w[k] = 1.
         sol0 = {}
         for k in 'xyz': sol0[k] = eval(k) + .01
         ls = linsolve.LinProductSolver(d,sol0,w,sparse=self.sparse)
@@ -395,7 +396,7 @@ class TestLinProductSolver(unittest.TestCase):
         y = np.arange(30, dtype=np.complex); y.shape = (3,10)
         z = np.arange(30, dtype=np.complex); z.shape = (3,10)
         d,w = {'x*y':x*y, 'x*z':x*z, 'y*z':y*z}, {}
-        for k in d.keys(): w[k] = np.ones(d[k].shape)
+        for k in list(d.keys()): w[k] = np.ones(d[k].shape)
         sol0 = {}
         for k in 'xyz': sol0[k] = eval(k) + .01
         ls = linsolve.LinProductSolver(d,sol0,w,sparse=self.sparse)
@@ -409,7 +410,7 @@ class TestLinProductSolver(unittest.TestCase):
         y = np.arange(1,31)*(2.0-3.0j); y.shape=(10,3)
         z = np.arange(1,31)*(3.0-9.0j); z.shape=(10,3)
         w = np.arange(1,31)*(4.0+2.0j); w.shape=(10,3)
-        x_,y_,z_,w_ = map(np.conjugate,(x,y,z,w))
+        x_,y_,z_,w_ = list(map(np.conjugate,(x,y,z,w)))
         expressions = ['x*y+z*w', '2*x_*y_+z*w-1.0j*z*w', '2*x*w', '1.0j*x + y*z', '-1*x*z+3*y*w*x+y', '2*w_', '2*x_ + 3*y - 4*z']
         data = {}
         for ex in expressions: data[ex] = eval(ex)
@@ -424,7 +425,7 @@ class TestLinProductSolver(unittest.TestCase):
         y = np.arange(1,31)*(2.0-3.0j); y.shape=(10,3)
         z = np.arange(1,31)*(3.0-9.0j); z.shape=(10,3)
         w = np.arange(1,31)*(4.0+2.0j); w.shape=(10,3)
-        x_,y_,z_,w_ = map(np.conjugate,(x,y,z,w))
+        x_,y_,z_,w_ = list(map(np.conjugate,(x,y,z,w)))
         expressions = ['x*y+z*w', '2*x_*y_+z*w-1.0j*z*w', '2*x*w', '1.0j*x + y*z', '-1*x*z+3*y*w*x+y', '2*w_', '2*x_ + 3*y - 4*z']
         data = {}
         for ex in expressions: data[ex] = eval(ex)
@@ -451,7 +452,7 @@ class TestLinProductSolver(unittest.TestCase):
         y = np.arange(1,31)*(2.0-3.0j); y.shape=(10,3)
         z = np.arange(1,31)*(3.0-9.0j); z.shape=(10,3)
         w = np.arange(1,31)*(4.0+2.0j); w.shape=(10,3)
-        x_,y_,z_,w_ = map(np.conjugate,(x,y,z,w))
+        x_,y_,z_,w_ = list(map(np.conjugate,(x,y,z,w)))
         expressions = ['x*y+z*w', '2*x_*y_+z*w-1.0j*z*w', '2*x*w', '1.0j*x + y*z', '-1*x*z+3*y*w*x+y', '2*w_', '2*x_ + 3*y - 4*z']
         data = {}
         for ex in expressions: data[ex] = eval(ex)

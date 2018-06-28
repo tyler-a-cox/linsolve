@@ -27,11 +27,13 @@ form 'x*y + y*z'.
 For more detail on usage, see linsolve_example.ipynb
 '''
 
+from __future__ import absolute_import, division, print_function
 import numpy as np
 import ast
 from scipy.sparse import lil_matrix, csr_matrix
 import scipy.sparse.linalg
 from copy import deepcopy
+from functools import reduce
 
 def ast_getterms(n):
     '''Convert an AST parse tree into a list of terms.  E.g. 'a*x1+b*x2' -> [[a,x1],[b,x2]]'''
@@ -143,22 +145,18 @@ class LinearEquation:
     def add_const(self, name, constants):
         '''Manually add a constant of given name to internal list of constants. Value is drawn from constants.'''
         n = get_name(name)
-        if constants.has_key(n) and isinstance(constants[n], Constant): c = constants[n]
+        if n in constants and isinstance(constants[n], Constant): c = constants[n]
         else: c = Constant(name, constants) # raises KeyError if not a constant
         self.consts[c.name] = c
     
     def order_terms(self, terms):
         '''Reorder terms to obey (const1,const2,...,prm) ordering.'''
-        def cmp(x,y):
-            if self.prms.has_key(get_name(x)): return 1
-            if self.prms.has_key(get_name(y)): return -1
-            return 0
-        for L in terms: L.sort(cmp)
+        for L in terms: L.sort(key=lambda x: get_name(x) in self.prms)
         # Validate that each term has exactly 1 unsolved parameter.
         for t in terms:
-            assert(self.prms.has_key(get_name(t[-1])))
+            assert(get_name(t[-1]) in self.prms)
             for ti in t[:-1]:
-                assert(type(ti) is not str or self.consts.has_key(get_name(ti)))
+                assert(type(ti) is not str or get_name(ti) in self.consts)
         return terms
 
     def eval_consts(self, const_list, wgts=np.float32(1.)):
@@ -201,7 +199,7 @@ def verify_weights(wgts, keys):
         return {k: np.float32(1.) for k in keys}
     else:
         for k in keys:
-            assert(wgts.has_key(k)) # must have weights for all keys
+            assert(k in wgts) # must have weights for all keys
             assert(np.iscomplexobj(wgts[k]) == False) # tricky errors happen if wgts are complex
         return wgts
 
@@ -227,7 +225,7 @@ class LinearSolver:
             None
         """
         self.data = data
-        self.keys = data.keys()
+        self.keys = list(data.keys())
         self.sparse = sparse
         self.wgts = verify_weights(wgts, self.keys)
         constants = kwargs.pop('constants', kwargs)
@@ -248,7 +246,7 @@ class LinearSolver:
         #go through and figure out if any variables are conjugated
         for eq in self.eqs: 
             self.re_im_split |= eq.has_conj
-        numerical_input = self.data.values() + self.consts.values() + self.wgts.values()
+        numerical_input = list(self.data.values()) + list(self.consts.values()) + list(self.wgts.values())
         self.dtype = reduce(np.promote_types, [d.dtype if hasattr(d,'dtype') else type(d) for d in numerical_input])
         if self.re_im_split: self.dtype = np.real(np.ones(1, dtype=self.dtype)).dtype
         self.shape = self._shape()
@@ -259,12 +257,12 @@ class LinearSolver:
         for k in self.consts:
             shk = self.consts[k].shape()
             if len(shk) > len(sh): sh += [0] * (len(shk)-len(sh))
-            for i in xrange(min(len(sh),len(shk))): sh[i] = max(sh[i],shk[i])
+            for i in range(min(len(sh),len(shk))): sh[i] = max(sh[i],shk[i])
         for k in self.wgts:
             try: shk = self.wgts[k].shape
             except(AttributeError): continue
             if len(shk) > len(sh): sh += [0] * (len(shk)-len(sh))
-            for i in xrange(min(len(sh),len(shk))): sh[i] = max(sh[i],shk[i])
+            for i in range(min(len(sh),len(shk))): sh[i] = max(sh[i],shk[i])
         return tuple(sh)
 
     def _A_shape(self):
@@ -341,8 +339,8 @@ class LinearSolver:
         if self.sparse:
             xs, ys, vals = self.get_A_sparse()
             #AtAi = None
-            for k in xrange(y.shape[-1]):
-                if verbose: print 'Solving %d/%d' % (k, y.shape[-1])
+            for k in range(y.shape[-1]):
+                if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
 
                 # inverse is ~10x slower than lsqr
                 #if AtAi is None or Ashape[-1] != 1:
@@ -369,8 +367,8 @@ class LinearSolver:
             A = self.get_A()
             assert(A.ndim == 3)
             AtAiAt = None
-            for k in xrange(y.shape[-1]):
-                if verbose: print 'Solving %d/%d' % (k, y.shape[-1])
+            for k in range(y.shape[-1]):
+                if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
 
                 if AtAiAt is None or Ashape[-1] != 1:
                     Ak = A[...,min(k,Ashape[-1]-1)]
@@ -393,7 +391,7 @@ class LinearSolver:
 
         x.shape = x.shape[:1] + self._data_shape # restore to shape of original data
         sol = {}
-        for p in self.prms.values(): sol.update(p.get_sol(x,self.prm_order))
+        for p in list(self.prms.values()): sol.update(p.get_sol(x,self.prm_order))
         return sol
 
     def eval(self, sol, keys=None):
@@ -401,7 +399,7 @@ class LinearSolver:
         Uses the stored data object unless otherwise specified."""
         if keys is None: keys = self.keys
         elif type(keys) is str: keys = [keys]
-        elif type(keys) is dict: keys = keys.keys()
+        elif type(keys) is dict: keys = list(keys.keys())
         result = {}
         for k in keys:
             eq = LinearEquation(k, **self.consts)
@@ -410,11 +408,11 @@ class LinearSolver:
     
     def _chisq(self, sol, data, wgts, evaluator):
         """Internal adaptable chisq calculator."""
-        if len(wgts) == 0: sigma2 = {k: 1.0 for k in data.keys()} #equal weights
-        else: sigma2 = {k: wgts[k]**-1 for k in wgts.keys()} 
+        if len(wgts) == 0: sigma2 = {k: 1.0 for k in list(data.keys())} #equal weights
+        else: sigma2 = {k: wgts[k]**-1 for k in list(wgts.keys())} 
         evaluated = evaluator(sol, keys=data)
         chisq = 0
-        for k in data.keys(): chisq += np.abs(evaluated[k]-data[k])**2 / sigma2[k]
+        for k in list(data.keys()): chisq += np.abs(evaluated[k]-data[k])**2 / sigma2[k]
         return chisq
     
     def chisq(self, sol, data=None, wgts=None):
@@ -424,7 +422,7 @@ class LinearSolver:
             data = self.data
         if wgts is None: 
             wgts = self.wgts
-        wgts = verify_weights(wgts, data.keys())
+        wgts = verify_weights(wgts, list(data.keys()))
         return self._chisq(sol, data, wgts, self.eval)
         
 
@@ -461,7 +459,7 @@ class LogProductSolver:
         Returns:
             None
         """
-        keys = data.keys()
+        keys = list(data.keys())
         wgts = verify_weights(wgts, keys)
         eqs = [ast_getterms(ast.parse(k, mode='eval')) for k in keys]
         logamp, logphs = {}, {}
@@ -538,7 +536,7 @@ class LinProductSolver:
             None
         """
         self.prepend = 'd' # XXX make this something hard to collide with
-        self.data, self.sparse, self.keys = data, sparse, data.keys()
+        self.data, self.sparse, self.keys = data, sparse, list(data.keys())
         self.wgts = verify_weights(wgts, self.keys)
         constants = kwargs.pop('constants', kwargs)
         self.init_kwargs, self.sols_kwargs = constants, deepcopy(constants)
@@ -573,7 +571,7 @@ class LinProductSolver:
             for term in terms:
                 for t in term:
                     t_name = get_name(t)
-                    if self.sols_kwargs.has_key(t_name):
+                    if t_name in self.sols_kwargs:
                         self.eq_dict[self.taylor_keys[k]].add_const(t_name, self.sols_kwargs)
         self._update_solver(sol0)
 
@@ -583,8 +581,8 @@ class LinProductSolver:
         self.sol0 = sol
         self.sols_kwargs.update(sol)
         for eq in self.ls.eqs:
-            for c in eq.consts.values(): 
-                if sol.has_key(c.name): eq.consts[c.name].val = self.sols_kwargs[c.name]
+            for c in list(eq.consts.values()): 
+                if c.name in sol: eq.consts[c.name].val = self.sols_kwargs[c.name]
             self.ls.consts.update(eq.consts)
         ans0 = self._get_ans0(sol)
         for k in ans0: self.ls.data[self.taylor_keys[k]] = self.data[k]-ans0[k]
@@ -617,7 +615,7 @@ class LinProductSolver:
         '''Returns a dictionary evaluating data keys to the current values given sol and consts.
         Uses the stored data object unless otherwise specified.'''
         if type(keys) is str: keys = [keys]
-        elif type(keys) is dict: keys = keys.keys()
+        elif type(keys) is dict: keys = list(keys.keys())
         return self._get_ans0(sol, keys=keys)
     
     def chisq(self, sol, data=None, wgts=None):
@@ -627,7 +625,7 @@ class LinProductSolver:
             data = self.data
         if wgts is None: 
             wgts = self.wgts
-        wgts = verify_weights(wgts, data.keys())
+        wgts = verify_weights(wgts, list(data.keys()))
         return self.ls._chisq(sol, data, wgts, self.eval)
 
     def solve_iteratively(self, conv_crit=1e-10, maxiter=50, verbose=False):
@@ -648,10 +646,10 @@ class LinProductSolver:
             sol: a dictionary of complex solutions with variables as keys
         """
         for i in range(1,maxiter+1):
-            if verbose: print 'Beginning iteration %d/%d' % (i,maxiter)
+            if verbose: print('Beginning iteration %d/%d' % (i,maxiter))
             new_sol = self.solve(rcond=conv_crit, verbose=verbose) # XXX is rcond=conv_crit correct?
-            deltas = [new_sol[k]-self.sol0[k] for k in new_sol.keys()]
-            conv = np.linalg.norm(deltas, axis=0) / np.linalg.norm(new_sol.values(),axis=0)
+            deltas = [new_sol[k]-self.sol0[k] for k in list(new_sol.keys())]
+            conv = np.linalg.norm(deltas, axis=0) / np.linalg.norm(list(new_sol.values()),axis=0)
             if np.all(conv < conv_crit) or i == maxiter:
                 meta = {'iter': i, 'chisq': self.chisq(new_sol), 'conv_crit': conv}
                 return meta, new_sol
