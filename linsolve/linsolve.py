@@ -366,28 +366,35 @@ class LinearSolver:
         else: 
             A = self.get_A()
             assert(A.ndim == 3)
-            AtAiAt = None
-            for k in range(y.shape[-1]):
-                if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
-
-                if AtAiAt is None or Ashape[-1] != 1:
+            if Ashape[-1] == 1 and y.shape[-1] > 1: # can reuse inverse
+                A = A[...,0]
+                At = A.T.conj()
+                AtA = At.dot(A)
+                try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
+                except(np.linalg.LinAlgError):
+                    AtAi = np.linalg.inv(AtA)
+                AtAiAt = AtAi.dot(A.T.conj())
+                for k in range(y.shape[-1]):
+                    if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
+                    x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
+            else: # we can't reuse inverses
+                for k in range(y.shape[-1]):
+                    if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
                     Ak = A[...,min(k,Ashape[-1]-1)]
-                    At = Ak.T.conj()
-                    AtA = At.dot(Ak) 
                     try:
                         x[...,k] = np.linalg.lstsq(Ak, y[...,k], rcond=rcond)[0]
                         # Aty = At.dot(y[...,k:k+1])
                         # xhat = np.linalg.solve(AtA, Aty) # is supposed to error for singular matrices, but doesn't seem to.
                         # Solve is ~1.5 times faster than lstqr, but fails to deal with singular matrices in our redcal tests
                     except(np.linalg.LinAlgError):
+                        At = Ak.T.conj()
+                        AtA = At.dot(Ak)
                         # finding inverse is about 3x slower than solve
                         try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
                         except(np.linalg.LinAlgError): 
                             AtAi = np.linalg.inv(AtA)
                         AtAiAt = AtAi.dot(Ak.T.conj()) 
                         x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
-                else: # then we've already computed AtAiAt and might as well use it
-                    x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
 
         x.shape = x.shape[:1] + self._data_shape # restore to shape of original data
         sol = {}
