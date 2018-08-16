@@ -320,6 +320,18 @@ class TestLogProductSolver(unittest.TestCase):
         self.assertAlmostEqual(np.angle(x), 0.)
         self.assertAlmostEqual(np.angle(y), 0.)
         self.assertAlmostEqual(np.angle(z), 0.)
+    def test_dtype(self):
+        for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+            x,y,z = np.exp(1.), np.exp(2.), np.exp(3.)
+            keys = ['x*y*z', 'x*y', 'y*z']
+            d,w = {}, {}
+            for k in keys:
+                d[k] = eval(k).astype(dtype)
+                w[k] = np.float32(1.)
+            ls = linsolve.LogProductSolver(d,w,sparse=self.sparse)
+            sol = ls.solve()
+            for k in sol:
+                self.assertEqual(sol[k].dtype, dtype)
 
 class TestLogProductSolverSparse(TestLogProductSolver):
     def setUp(self):

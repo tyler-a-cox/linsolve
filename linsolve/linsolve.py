@@ -32,6 +32,7 @@ import numpy as np
 import ast
 from scipy.sparse import lil_matrix, csr_matrix
 import scipy.sparse.linalg
+import warnings
 from copy import deepcopy
 from functools import reduce
 
@@ -466,6 +467,7 @@ class LogProductSolver:
         Returns:
             None
         """
+        self.dtype = data.values()[0].dtype
         keys = list(data.keys())
         wgts = verify_weights(wgts, keys)
         eqs = [ast_getterms(ast.parse(k, mode='eval')) for k in keys]
@@ -500,7 +502,11 @@ class LogProductSolver:
         sol_amp = self.ls_amp.solve(rcond=rcond, verbose=verbose)
         sol_phs = self.ls_phs.solve(rcond=rcond, verbose=verbose)
         sol = {}
-        for k in sol_amp: sol[k] = np.exp(sol_amp[k] + 1j*sol_phs[k])   
+        for k in sol_amp:
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', np.ComplexWarning)
+                sol[k] = np.exp(sol_amp[k] + 
+                    np.complex64(1j)*sol_phs[k]).astype(self.dtype)
         return sol
 
 def taylor_expand(terms, consts={}, prepend='d'):
