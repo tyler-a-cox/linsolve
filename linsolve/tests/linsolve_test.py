@@ -225,12 +225,12 @@ class TestLinearSolver(unittest.TestCase):
         self.assertAlmostEqual(ls.chisq(sol), 1.0/3.0)
     def test_dtypes(self):
         ls = linsolve.LinearSolver({'x_': 1.0+1.0j}, sparse=self.sparse)
-        self.assertEqual(ls.dtype,float)
-        self.assertEqual(type(ls.solve()['x']), np.complex128)
+        self.assertEqual(ls.dtype,np.float32)
+        self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         ls = linsolve.LinearSolver({'x': 1.0+1.0j}, sparse=self.sparse)
-        self.assertEqual(ls.dtype,complex)
-        self.assertEqual(type(ls.solve()['x']), np.complex128)
+        self.assertEqual(ls.dtype, np.complex64)
+        self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         ls = linsolve.LinearSolver({'x_': np.ones(1,dtype=np.complex64)[0]}, sparse=self.sparse)
         self.assertEqual(ls.dtype,np.float32)
@@ -241,8 +241,8 @@ class TestLinearSolver(unittest.TestCase):
         self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         ls = linsolve.LinearSolver({'c*x': 1.0}, c=1.0+1.0j, sparse=self.sparse)
-        self.assertEqual(ls.dtype,np.complex128)
-        self.assertEqual(type(ls.solve()['x']), np.complex128)
+        self.assertEqual(ls.dtype,np.complex64)
+        self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         d = {'c*x': np.ones(1,dtype=np.float32)[0]}
         wgts = {'c*x': np.ones(1,dtype=np.float64)[0]}
@@ -473,6 +473,23 @@ class TestLinProductSolver(unittest.TestCase):
         meta, new_sol = testSolve.solve_iteratively()
         for var in 'wxyz': 
             np.testing.assert_almost_equal(new_sol[var], eval(var), 4)
+    def test_solve_iteratively_dtype(self):
+        x = np.arange(1,31)*(1.0+1.0j); x.shape=(10,3) 
+        y = np.arange(1,31)*(2.0-3.0j); y.shape=(10,3)
+        z = np.arange(1,31)*(3.0-9.0j); z.shape=(10,3)
+        w = np.arange(1,31)*(4.0+2.0j); w.shape=(10,3)
+        x_,y_,z_,w_ = list(map(np.conjugate,(x,y,z,w)))
+        expressions = ['x*y+z*w', '2*x_*y_+z*w-1.0j*z*w', '2*x*w', '1.0j*x + y*z', '-1*x*z+3*y*w*x+y', '2*w_', '2*x_ + 3*y - 4*z']
+        data = {}
+        for dtype in (np.complex128, np.complex64):
+            for ex in expressions: data[ex] = eval(ex).astype(dtype)
+            currentSol = {'x':1.1*x, 'y': .9*y, 'z': 1.1*z, 'w':1.2*w}
+            currentSol = {k:v.astype(dtype) for k,v in currentSol.items()}
+            testSolve = linsolve.LinProductSolver(data, currentSol,sparse=self.sparse)
+            meta, new_sol = testSolve.solve_iteratively()
+            for var in 'wxyz':
+                self.assertEqual(new_sol[var].dtype, dtype)
+                np.testing.assert_almost_equal(new_sol[var], eval(var), 4)
 
 class TestLinProductSolverSparse(TestLinProductSolver):
     def setUp(self):

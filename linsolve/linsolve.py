@@ -204,6 +204,22 @@ def verify_weights(wgts, keys):
             assert(np.iscomplexobj(wgts[k]) == False) # tricky errors happen if wgts are complex
         return wgts
 
+def infer_dtype(values):
+    '''Given a list of values, return the appropriate data 
+    type for matrices, solutions.  
+    Returns float32, float64, complex64, or complex128'''
+    # determine the data type of all numpy arrays
+    types = [v.dtype for v in values if hasattr(v,'dtype')]
+    types = [t for t in types if type(t) is np.dtype]
+    # ensure we are at least a float32 if we were passed integers
+    types.append(np.float32)
+    # if any python constants are complex, promote to complex, but otherwise
+    # don't promote to double if we have floats/doubles/ints in python
+    py_types = [v.dtype if hasattr(v,'dtype') else type(v) for v in values]
+    if type(1j) in py_types: types.append(np.complex64)
+    dtype = reduce(np.promote_types, types)
+    return dtype
+
 
 class LinearSolver:
 
@@ -247,8 +263,7 @@ class LinearSolver:
         #go through and figure out if any variables are conjugated
         for eq in self.eqs: 
             self.re_im_split |= eq.has_conj
-        numerical_input = list(self.data.values()) + list(self.consts.values()) + list(self.wgts.values())
-        self.dtype = reduce(np.promote_types, [d.dtype if hasattr(d,'dtype') else type(d) for d in numerical_input])
+        self.dtype = infer_dtype(self.data.values() + self.consts.values() + self.wgts.values())
         if self.re_im_split: self.dtype = np.real(np.ones(1, dtype=self.dtype)).dtype
         self.shape = self._shape()
 
@@ -467,7 +482,6 @@ class LogProductSolver:
         Returns:
             None
         """
-        self.dtype = data.values()[0].dtype
         keys = list(data.keys())
         wgts = verify_weights(wgts, keys)
         eqs = [ast_getterms(ast.parse(k, mode='eval')) for k in keys]
@@ -482,6 +496,7 @@ class LogProductSolver:
             try: logampw[eqamp],logphsw[eqphs] = wgts[k], wgts[k]
             except(KeyError): pass
         constants = kwargs.pop('constants', kwargs)
+        self.dtype = infer_dtype(data.values() + constants.values() + wgts.values())
         logamp_consts, logphs_consts = {}, {}
         for k in constants:
             c = np.log(constants[k]) # log unwraps complex circle at -pi
@@ -661,7 +676,7 @@ class LinProductSolver:
         for i in range(1,maxiter+1):
             if verbose: print('Beginning iteration %d/%d' % (i,maxiter))
             new_sol = self.solve(rcond=conv_crit, verbose=verbose) # XXX is rcond=conv_crit correct?
-            deltas = [new_sol[k]-self.sol0[k] for k in list(new_sol.keys())]
+            deltas = [new_sol[k]-self.sol0[k] for k in new_sol.keys()]
             conv = np.linalg.norm(deltas, axis=0) / np.linalg.norm(list(new_sol.values()),axis=0)
             if np.all(conv < conv_crit) or i == maxiter:
                 meta = {'iter': i, 'chisq': self.chisq(new_sol), 'conv_crit': conv}
