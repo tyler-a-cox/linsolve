@@ -212,11 +212,11 @@ def infer_dtype(values):
     types = [v.dtype for v in values if hasattr(v,'dtype')]
     types = [t for t in types if type(t) is np.dtype]
     # ensure we are at least a float32 if we were passed integers
-    types.append(np.float32)
+    types.append(np.float32(1).dtype)
     # if any python constants are complex, promote to complex, but otherwise
     # don't promote to double if we have floats/doubles/ints in python
     py_types = [v.dtype if hasattr(v,'dtype') else type(v) for v in values]
-    if type(1j) in py_types: types.append(np.complex64)
+    if type(1j) in py_types: types.append(np.complex64(1).dtype)
     dtype = reduce(np.promote_types, types)
     return dtype
 
@@ -264,6 +264,7 @@ class LinearSolver:
         for eq in self.eqs: 
             self.re_im_split |= eq.has_conj
         self.dtype = infer_dtype(self.data.values() + self.consts.values() + self.wgts.values())
+        self.is_single = self.dtype.name in ['float32', 'complex64']
         if self.re_im_split: self.dtype = np.real(np.ones(1, dtype=self.dtype)).dtype
         self.shape = self._shape()
 
@@ -339,78 +340,116 @@ class LinearSolver:
             return rv
         else: return d
     
-    def solve(self, rcond=1e-10, verbose=False): # XXX add prm for used AtAiAt for all k?
+    def _invert_default_sparse(self, A, y, rcond):
+        '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
+        try:
+            xhat = self._invert_lsqr_sparse(A, y, rcond)
+        except(np.linalg.LinAlgError):
+            xhat = self._invert_pinv_sparse(A, y, rcond)
+        return xhat
+    def _invert_lsqr_sparse(self, A, y, rcond):
+        '''Use the scipy.sparse lsqr solver.'''
+        xhat = scipy.sparse.linalg.lsqr(A, y[...,0], atol=rcond, btol=rcond)[0] # XXX does this err for singular cases?
+        xhat.shape += (1,)
+        return xhat
+    def _invert_pinv_sparse(self, A, y, rcond):
+        '''Use pinv to invert AtA matrix.  Tends to be ~10x slower than lsqr for sparse matrices'''
+        At = A.T.conj()
+        AtA = At.dot(A).toarray()
+        try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
+        except(np.linalg.LinAlgError): AtAi = np.linalg.inv(AtA)
+        return AtAi.dot(At.dot(y)) 
+    def _invert_solve_sparse(self, A, y, rcond):
+        '''Use linalg.solve to solve a fully constrained (non-degenerate) system of equations.
+        Tends to be ~3x slower than lsqr for sparse matrices.'''
+        At = A.T.conj()
+        AtA = At.dot(A).toarray()
+        Aty = At.dot(y) # automatically dense bc y is dense
+        #xhat = scipy.sparse.linalg.spsolve(AtA, Aty)
+        return np.linalg.solve(AtA, Aty)
+    def _invert_lsqr(self, A, y, rcond):
+        '''Use np.linalg.lstsq to solve a system of equations.  Usually the best 
+        performer, but for a fully-constrained system, 'solve' can be faster.  Also,
+        there are a couple corner cases where lstsq is unstable but pinv works 
+        for the same rcond. It seems particularly the case for single precision matrices.'''
+        xhat = np.linalg.lstsq(A, y[...,0], rcond=rcond)[0]
+        xhat.shape += (1,)
+        return xhat
+    def _gen_AtAiAt(self, A, rcond):
+        '''Helper function for forming (At A)^-1 At.  Uses pinv to invert.'''
+        At = A.T.conj()
+        AtA = At.dot(A)
+        # finding inverse is about 3x slower than solve
+        try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
+        except(np.linalg.LinAlgError): 
+            AtAi = np.linalg.inv(AtA)
+        AtAiAt = AtAi.dot(A.T.conj()) 
+        return AtAiAt
+    def _invert_pinv(self, A, y, rcond):
+        '''Use np.linalg.pinv to invert AtA matrix.  Tends to be about ~3x slower than solve.'''
+        AtAiAt = self._gen_AtAiAt(A, rcond)
+        return np.dot(AtAiAt,y)
+    def _invert_solve(self, A, y, rcond):
+        '''Use np.linalg.solve to solve a system of equations.  Requires a fully constrained
+        system of equations (i.e. doesn't deal with singular matrices).  Can by ~1.5x faster that lstsq
+        for this case.'''
+        At = A.T.conj()
+        AtA = At.dot(A)
+        Aty = At.dot(y)
+        return np.linalg.solve(AtA, Aty) # is supposed to error if singular, but doesn't seem to.
+    def _invert_default(self, A, y, rcond):
+        '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
+        try:
+            xhat = self._invert_lsqr(A, y, rcond)
+        except(np.linalg.LinAlgError):
+            xhat = self._invert_pinv(A, y, rcond)
+        return xhat
+    def solve(self, rcond=1e-10, mode='default', verbose=False):
         """Compute x' = (At A)^-1 At * y, returning x' as dict of prms:values.
 
         Args:
             rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects what inverter to use.  'default'
+                is best for most cases, but 'solve' may be faster for fully-constrained systems,
+                and 'pinv' can sometimes be more stable (but slower) than 'lsqr'.
+            verbose: print information about iterations
 
         Returns:
             sol: a dictionary of solutions with variables as keys
         """
+        assert(mode in ['default','lsqr','pinv','solve'])
         y = self.get_weighted_data()
         Ashape = self._A_shape()
         x = np.empty((Ashape[1],y.shape[-1]), dtype=self.dtype)
         if self.sparse:
+            if mode == 'default': _invert = self._invert_default_sparse
+            elif mode == 'lsqr': _invert = self._invert_lsqr_sparse
+            elif mode == 'pinv': _invert = self._invert_pinv_sparse
+            elif mode == 'solve': _invert = self._invert_solve_sparse
             xs, ys, vals = self.get_A_sparse()
-            #AtAi = None
             for k in range(y.shape[-1]):
                 if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
-
-                # inverse is ~10x slower than lsqr
-                #if AtAi is None or Ashape[-1] != 1:
-                #    Ak = csr_matrix((vals[k], (xs,ys))) 
-                #    At = Ak.T.conj()
-                #    AtA = At.dot(Ak).toarray()
-                #    try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
-                #    except(np.linalg.LinAlgError): AtAi = np.linalg.inv(AtA)
-                #x[...,k:k+1] = AtAi.dot(At.conj().dot(y[...,k:k+1]))
-
-                # solve is ~3x slower than lsqr
-                #Ak = csr_matrix((vals[k], (xs,ys))) 
-                #At = Ak.T.conj()
-                #AtA = At.dot(Ak).toarray()
-                ##Aty = At.dot(y[...,k:k+1])
-                #Aty = At.dot(y[...,k:k+1]) # automatically dense bc y is dense
-                ##xhat = scipy.sparse.linalg.spsolve(AtA, Aty)
-                #xhat = np.linalg.solve(AtA, Aty)
-                #x[...,k:k+1] = xhat
                 Ak = csr_matrix((vals[min(k,Ashape[-1]-1)], (xs,ys))) 
-                xhat = scipy.sparse.linalg.lsqr(Ak, y[...,k], atol=rcond, btol=rcond)[0] # XXX does this err for singular cases?
-                x[...,k] = xhat
+                x[...,k:k+1] = _invert(Ak, y[...,k:k+1], rcond)
         else: 
             A = self.get_A()
             assert(A.ndim == 3)
             if Ashape[-1] == 1 and y.shape[-1] > 1: # can reuse inverse
                 A = A[...,0]
-                At = A.T.conj()
-                AtA = At.dot(A)
-                try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
-                except(np.linalg.LinAlgError):
-                    AtAi = np.linalg.inv(AtA)
-                AtAiAt = AtAi.dot(A.T.conj())
+                AtAiAt = self._gen_AtAiAt(A, rcond)
                 for k in range(y.shape[-1]):
                     if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
                     x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
             else: # we can't reuse inverses
+                if mode == 'default': _invert = self._invert_default
+                elif mode == 'lsqr': _invert = self._invert_lsqr
+                elif mode == 'pinv': _invert = self._invert_pinv
+                elif mode == 'solve': _invert = self._invert_solve
                 for k in range(y.shape[-1]):
                     if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
                     Ak = A[...,min(k,Ashape[-1]-1)]
-                    try:
-                        x[...,k] = np.linalg.lstsq(Ak, y[...,k], rcond=rcond)[0]
-                        # Aty = At.dot(y[...,k:k+1])
-                        # xhat = np.linalg.solve(AtA, Aty) # is supposed to error for singular matrices, but doesn't seem to.
-                        # Solve is ~1.5 times faster than lstqr, but fails to deal with singular matrices in our redcal tests
-                    except(np.linalg.LinAlgError):
-                        At = Ak.T.conj()
-                        AtA = At.dot(Ak)
-                        # finding inverse is about 3x slower than solve
-                        try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
-                        except(np.linalg.LinAlgError): 
-                            AtAi = np.linalg.inv(AtA)
-                        AtAiAt = AtAi.dot(Ak.T.conj()) 
-                        x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
+                    x[...,k:k+1] = _invert(Ak, y[...,k:k+1], rcond)
 
         x.shape = x.shape[:1] + self._data_shape # restore to shape of original data
         sol = {}
@@ -449,7 +488,7 @@ class LinearSolver:
         return self._chisq(sol, data, wgts, self.eval)
         
 
-# XXX need to add support for conjugated constants...maybe this already works because we have conjugated constants inherited form taylor expansion
+# XXX need to add support for conjugated constants...maybe this already works because we have conjugated constants inherited from taylor expansion
 def conjterm(term, mode='amp'):
     '''Modify prefactor for conjugated terms, according to mode='amp|phs|real|imag'.'''
     f = {'amp':1,'phs':-1,'real':1,'imag':1j}[mode] # if KeyError, mode was invalid
@@ -497,6 +536,7 @@ class LogProductSolver:
             except(KeyError): pass
         constants = kwargs.pop('constants', kwargs)
         self.dtype = infer_dtype(data.values() + constants.values() + wgts.values())
+        self.is_single = self.dtype.name in ['float32', 'complex64']
         logamp_consts, logphs_consts = {}, {}
         for k in constants:
             c = np.log(constants[k]) # log unwraps complex circle at -pi
@@ -504,18 +544,22 @@ class LogProductSolver:
         self.ls_amp = LinearSolver(logamp, logampw, sparse=sparse, constants=logamp_consts)
         self.ls_phs = LinearSolver(logphs, logphsw, sparse=sparse, constants=logphs_consts)
 
-    def solve(self, rcond=1e-10, verbose=False):
+    def solve(self, rcond=1e-10, mode='default', verbose=False):
         """Solve both amplitude and phase by taking the log of both sides to linearize.
 
         Args:
             rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects what inverter to use.  'default'
+                is best for most cases, but 'solve' may be faster for fully-constrained systems,
+                and 'pinv' can sometimes be more stable (but slower) than 'lsqr'.
+            verbose: print information about iterations
 
         Returns:
             sol: a dictionary of complex solutions with variables as keys
         """
-        sol_amp = self.ls_amp.solve(rcond=rcond, verbose=verbose)
-        sol_phs = self.ls_phs.solve(rcond=rcond, verbose=verbose)
+        sol_amp = self.ls_amp.solve(rcond=rcond, mode=mode, verbose=verbose)
+        sol_phs = self.ls_phs.solve(rcond=rcond, mode=mode, verbose=verbose)
         sol = {}
         for k in sol_amp:
             with warnings.catch_warnings():
@@ -571,6 +615,7 @@ class LinProductSolver:
         self.sols_kwargs.update(sol0)
         self.all_terms, self.taylors, self.taylor_keys = self.gen_taylors()
         self.build_solver(sol0) 
+        self.is_single = self.ls.is_single
     
     def gen_taylors(self, keys=None):
         '''Parses all terms, performs a taylor expansion, and maps equation keys to taylor expansion keys.'''
@@ -630,9 +675,22 @@ class LinProductSolver:
             ans0[k] = np.sum([eq.eval_consts(t) for t in taylor[:len(terms)]], axis=0)
         return ans0
 
-    def solve(self, rcond=1e-10, verbose=False):
-        '''Executes a LinearSolver on the taylor-expanded system of equations, improving sol0 to get sol.'''
-        dsol = self.ls.solve(rcond=rcond, verbose=verbose)
+    def solve(self, rcond=1e-10, mode='default', verbose=False):
+        '''Executes one iteration of a LinearSolver on the taylor-expanded system of 
+        equations, improving sol0 to get sol.
+
+        Args:
+            rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
+                or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects what inverter to use.  'default'
+                is best for most cases, but 'solve' may be faster for fully-constrained systems,
+                and 'pinv' can sometimes be more stable (but slower) than 'lsqr'.
+            verbose: print information about iterations
+
+        Returns:
+            sol: a dictionary of complex solutions with variables as keys
+        '''
+        dsol = self.ls.solve(rcond=rcond, mode=mode, verbose=verbose)
         sol = {}
         for dk in dsol:
             k = dk[len(self.prepend):]
@@ -656,7 +714,7 @@ class LinProductSolver:
         wgts = verify_weights(wgts, list(data.keys()))
         return self.ls._chisq(sol, data, wgts, self.eval)
 
-    def solve_iteratively(self, conv_crit=1e-10, maxiter=50, verbose=False):
+    def solve_iteratively(self, conv_crit=1e-10, maxiter=50, mode='default', verbose=False):
         """Repeatedly solves and updates linsolve until convergence or maxiter is reached. 
         Returns a meta object containing the number of iterations, chisq, and convergence criterion.
 
@@ -665,6 +723,10 @@ class LinProductSolver:
                 Converegence is measured L2-norm of the change in the solution of all the variables
                 divided by the L2-norm of the solution itself.
             maxiter: An integer maximum number of iterations to perform before quitting. Default 50.
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects what inverter to use.  'default'
+                is best for most cases, but 'solve' may be faster for fully-constrained systems,
+                and 'pinv' can sometimes be more stable (but slower) than 'lsqr'.
+            verbose: print information about iterations
 
         Returns: meta, sol
             meta: a dictionary with metadata about the solution, including
@@ -675,7 +737,9 @@ class LinProductSolver:
         """
         for i in range(1,maxiter+1):
             if verbose: print('Beginning iteration %d/%d' % (i,maxiter))
-            new_sol = self.solve(rcond=conv_crit, verbose=verbose) # XXX is rcond=conv_crit correct?
+            # rcond=conv_crit works because you can't get better precision than the accuracy of your inversion
+            # and vice versa, there's no real point in inverting with greater precision than you are shooting for
+            new_sol = self.solve(rcond=conv_crit, verbose=verbose, mode=mode)
             deltas = [new_sol[k]-self.sol0[k] for k in new_sol.keys()]
             conv = np.linalg.norm(deltas, axis=0) / np.linalg.norm(list(new_sol.values()),axis=0)
             if np.all(conv < conv_crit) or i == maxiter:
