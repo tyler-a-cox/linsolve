@@ -263,7 +263,7 @@ class LinearSolver:
         #go through and figure out if any variables are conjugated
         for eq in self.eqs: 
             self.re_im_split |= eq.has_conj
-        self.dtype = infer_dtype(self.data.values() + self.consts.values() + self.wgts.values())
+        self.dtype = infer_dtype(list(self.data.values()) + list(self.consts.values()) + list(self.wgts.values()))
         self.is_single = self.dtype.name in ['float32', 'complex64']
         if self.re_im_split: self.dtype = np.real(np.ones(1, dtype=self.dtype)).dtype
         self.shape = self._shape()
@@ -535,7 +535,7 @@ class LogProductSolver:
             try: logampw[eqamp],logphsw[eqphs] = wgts[k], wgts[k]
             except(KeyError): pass
         constants = kwargs.pop('constants', kwargs)
-        self.dtype = infer_dtype(data.values() + constants.values() + wgts.values())
+        self.dtype = infer_dtype(list(data.values()) + list(constants.values()) + list(wgts.values()))
         self.is_single = self.dtype.name in ['float32', 'complex64']
         logamp_consts, logphs_consts = {}, {}
         for k in constants:
