@@ -42,6 +42,19 @@ class TestLinSolve(unittest.TestCase):
         self.assertEqual(linsolve.verify_weights({'a':10.0},['a']), {'a': 10.0})
         self.assertRaises(AssertionError, linsolve.verify_weights, {'a':1.0+1.0j}, ['a'])
         self.assertRaises(AssertionError, linsolve.verify_weights, {'a':1.0}, ['a', 'b'])
+    def test_infer_dtype(self):
+        self.assertEqual(linsolve.infer_dtype([1.,2.]), np.float32)
+        self.assertEqual(linsolve.infer_dtype([3,4]), np.float32)
+        self.assertEqual(linsolve.infer_dtype([np.float32(1),4]), np.float32)
+        self.assertEqual(linsolve.infer_dtype([np.float64(1),4]), np.float64)
+        self.assertEqual(linsolve.infer_dtype([np.float32(1),4j]), np.complex64)
+        self.assertEqual(linsolve.infer_dtype([np.float64(1),4j]), np.complex128)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),4j]), np.complex64)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),4.]), np.complex64)
+        self.assertEqual(linsolve.infer_dtype([np.complex128(1),np.float64(4.)]), np.complex128)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.float64(4.)]), np.complex128)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.int32(4.)]), np.complex128)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.int64(4.)]), np.complex128)
     
 class TestLinearEquation(unittest.TestCase):
     def test_basics(self):
@@ -132,6 +145,11 @@ class TestLinearSolver(unittest.TestCase):
         sol = self.ls.solve()
         self.assertAlmostEqual(sol['x'], 1.)
         self.assertAlmostEqual(sol['y'], 2.)
+    def test_solve_modes(self):
+        for mode in ['default','lsqr','pinv','solve']:
+            sol = self.ls.solve(mode=mode)
+            self.assertAlmostEqual(sol['x'], 1.)
+            self.assertAlmostEqual(sol['y'], 2.)
     def test_solve_arrays(self):
         x = np.arange(100,dtype=np.float); x.shape = (10,10)
         y = np.arange(100,dtype=np.float); y.shape = (10,10)
@@ -142,6 +160,17 @@ class TestLinearSolver(unittest.TestCase):
         sol = ls.solve()
         np.testing.assert_almost_equal(sol['x'], x)
         np.testing.assert_almost_equal(sol['y'], y)
+    def test_solve_arrays_modes(self):
+        x = np.arange(100,dtype=np.float); x.shape = (10,10)
+        y = np.arange(100,dtype=np.float); y.shape = (10,10)
+        eqs = ['2*x+y','-x+3*y']
+        d,w = {}, {}
+        for eq in eqs: d[eq],w[eq] = eval(eq), 1.
+        ls = linsolve.LinearSolver(d,w, sparse=self.sparse)
+        for mode in ['default','lsqr','pinv','solve']:
+            sol = ls.solve(mode=mode)
+            np.testing.assert_almost_equal(sol['x'], x)
+            np.testing.assert_almost_equal(sol['y'], y)
     def test_A_shape(self):
         consts = {'a':np.arange(10), 'b':np.zeros((1,10))}
         ls = linsolve.LinearSolver({'a*x+b*y':0.},{'a*x+b*y':1},**consts)
@@ -225,12 +254,12 @@ class TestLinearSolver(unittest.TestCase):
         self.assertAlmostEqual(ls.chisq(sol), 1.0/3.0)
     def test_dtypes(self):
         ls = linsolve.LinearSolver({'x_': 1.0+1.0j}, sparse=self.sparse)
-        self.assertEqual(ls.dtype,float)
-        self.assertEqual(type(ls.solve()['x']), np.complex128)
+        self.assertEqual(ls.dtype,np.float32)
+        self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         ls = linsolve.LinearSolver({'x': 1.0+1.0j}, sparse=self.sparse)
-        self.assertEqual(ls.dtype,complex)
-        self.assertEqual(type(ls.solve()['x']), np.complex128)
+        self.assertEqual(ls.dtype, np.complex64)
+        self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         ls = linsolve.LinearSolver({'x_': np.ones(1,dtype=np.complex64)[0]}, sparse=self.sparse)
         self.assertEqual(ls.dtype,np.float32)
@@ -241,8 +270,8 @@ class TestLinearSolver(unittest.TestCase):
         self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         ls = linsolve.LinearSolver({'c*x': 1.0}, c=1.0+1.0j, sparse=self.sparse)
-        self.assertEqual(ls.dtype,np.complex128)
-        self.assertEqual(type(ls.solve()['x']), np.complex128)
+        self.assertEqual(ls.dtype,np.complex64)
+        self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         d = {'c*x': np.ones(1,dtype=np.float32)[0]}
         wgts = {'c*x': np.ones(1,dtype=np.float64)[0]}
@@ -320,6 +349,18 @@ class TestLogProductSolver(unittest.TestCase):
         self.assertAlmostEqual(np.angle(x), 0.)
         self.assertAlmostEqual(np.angle(y), 0.)
         self.assertAlmostEqual(np.angle(z), 0.)
+    def test_dtype(self):
+        for dtype in (np.float32, np.float64, np.complex64, np.complex128):
+            x,y,z = np.exp(1.), np.exp(2.), np.exp(3.)
+            keys = ['x*y*z', 'x*y', 'y*z']
+            d,w = {}, {}
+            for k in keys:
+                d[k] = eval(k).astype(dtype)
+                w[k] = np.float32(1.)
+            ls = linsolve.LogProductSolver(d,w,sparse=self.sparse)
+            sol = ls.solve()
+            for k in sol:
+                self.assertEqual(sol[k].dtype, dtype)
 
 class TestLogProductSolverSparse(TestLogProductSolver):
     def setUp(self):
@@ -461,6 +502,23 @@ class TestLinProductSolver(unittest.TestCase):
         meta, new_sol = testSolve.solve_iteratively()
         for var in 'wxyz': 
             np.testing.assert_almost_equal(new_sol[var], eval(var), 4)
+    def test_solve_iteratively_dtype(self):
+        x = np.arange(1,31)*(1.0+1.0j); x.shape=(10,3) 
+        y = np.arange(1,31)*(2.0-3.0j); y.shape=(10,3)
+        z = np.arange(1,31)*(3.0-9.0j); z.shape=(10,3)
+        w = np.arange(1,31)*(4.0+2.0j); w.shape=(10,3)
+        x_,y_,z_,w_ = list(map(np.conjugate,(x,y,z,w)))
+        expressions = ['x*y+z*w', '2*x_*y_+z*w-1.0j*z*w', '2*x*w', '1.0j*x + y*z', '-1*x*z+3*y*w*x+y', '2*w_', '2*x_ + 3*y - 4*z']
+        data = {}
+        for dtype in (np.complex128, np.complex64):
+            for ex in expressions: data[ex] = eval(ex).astype(dtype)
+            currentSol = {'x':1.1*x, 'y': .9*y, 'z': 1.1*z, 'w':1.2*w}
+            currentSol = {k:v.astype(dtype) for k,v in currentSol.items()}
+            testSolve = linsolve.LinProductSolver(data, currentSol,sparse=self.sparse)
+            meta, new_sol = testSolve.solve_iteratively()
+            for var in 'wxyz':
+                self.assertEqual(new_sol[var].dtype, dtype)
+                np.testing.assert_almost_equal(new_sol[var], eval(var), 4)
 
 class TestLinProductSolverSparse(TestLinProductSolver):
     def setUp(self):
