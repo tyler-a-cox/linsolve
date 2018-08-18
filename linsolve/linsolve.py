@@ -363,7 +363,8 @@ class LinearSolver:
 
     def _invert_solve_sparse(self, A, y, rcond):
         '''Use linalg.solve to solve a fully constrained (non-degenerate) system of equations.
-        Tends to be ~3x slower than lsqr for sparse matrices.'''
+        Tends to be ~3x slower than lsqr for sparse matrices.  'rcond' is unused, but passed
+        as an argument to match the interface of other _invert methods.'''
         At = A.T.conj()
         AtA = At.dot(A).toarray()
         Aty = At.dot(y) # automatically dense bc y is dense
@@ -398,7 +399,8 @@ class LinearSolver:
     def _invert_solve(self, A, y, rcond):
         '''Use np.linalg.solve to solve a system of equations.  Requires a fully constrained
         system of equations (i.e. doesn't deal with singular matrices).  Can by ~1.5x faster that lstsq
-        for this case.'''
+        for this case. 'rcond' is unused, but passed as an argument to match the interface of other
+        _invert methods.'''
         At = A.T.conj()
         AtA = At.dot(A)
         Aty = At.dot(y)
