@@ -42,6 +42,19 @@ class TestLinSolve(unittest.TestCase):
         self.assertEqual(linsolve.verify_weights({'a':10.0},['a']), {'a': 10.0})
         self.assertRaises(AssertionError, linsolve.verify_weights, {'a':1.0+1.0j}, ['a'])
         self.assertRaises(AssertionError, linsolve.verify_weights, {'a':1.0}, ['a', 'b'])
+    def test_infer_dtype(self):
+        self.assertEqual(linsolve.infer_dtype([1.,2.]), np.float32)
+        self.assertEqual(linsolve.infer_dtype([3,4]), np.float32)
+        self.assertEqual(linsolve.infer_dtype([np.float32(1),4]), np.float32)
+        self.assertEqual(linsolve.infer_dtype([np.float64(1),4]), np.float64)
+        self.assertEqual(linsolve.infer_dtype([np.float32(1),4j]), np.complex64)
+        self.assertEqual(linsolve.infer_dtype([np.float64(1),4j]), np.complex128)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),4j]), np.complex64)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),4.]), np.complex64)
+        self.assertEqual(linsolve.infer_dtype([np.complex128(1),np.float64(4.)]), np.complex128)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.float64(4.)]), np.complex128)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.int32(4.)]), np.complex128)
+        self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.int64(4.)]), np.complex128)
     
 class TestLinearEquation(unittest.TestCase):
     def test_basics(self):
@@ -132,6 +145,11 @@ class TestLinearSolver(unittest.TestCase):
         sol = self.ls.solve()
         self.assertAlmostEqual(sol['x'], 1.)
         self.assertAlmostEqual(sol['y'], 2.)
+    def test_solve_modes(self):
+        for mode in ['default','lsqr','pinv','solve']:
+            sol = self.ls.solve(mode=mode)
+            self.assertAlmostEqual(sol['x'], 1.)
+            self.assertAlmostEqual(sol['y'], 2.)
     def test_solve_arrays(self):
         x = np.arange(100,dtype=np.float); x.shape = (10,10)
         y = np.arange(100,dtype=np.float); y.shape = (10,10)
@@ -142,6 +160,17 @@ class TestLinearSolver(unittest.TestCase):
         sol = ls.solve()
         np.testing.assert_almost_equal(sol['x'], x)
         np.testing.assert_almost_equal(sol['y'], y)
+    def test_solve_arrays_modes(self):
+        x = np.arange(100,dtype=np.float); x.shape = (10,10)
+        y = np.arange(100,dtype=np.float); y.shape = (10,10)
+        eqs = ['2*x+y','-x+3*y']
+        d,w = {}, {}
+        for eq in eqs: d[eq],w[eq] = eval(eq), 1.
+        ls = linsolve.LinearSolver(d,w, sparse=self.sparse)
+        for mode in ['default','lsqr','pinv','solve']:
+            sol = ls.solve(mode=mode)
+            np.testing.assert_almost_equal(sol['x'], x)
+            np.testing.assert_almost_equal(sol['y'], y)
     def test_A_shape(self):
         consts = {'a':np.arange(10), 'b':np.zeros((1,10))}
         ls = linsolve.LinearSolver({'a*x+b*y':0.},{'a*x+b*y':1},**consts)
