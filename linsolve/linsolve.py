@@ -264,7 +264,6 @@ class LinearSolver:
         for eq in self.eqs: 
             self.re_im_split |= eq.has_conj
         self.dtype = infer_dtype(list(self.data.values()) + list(self.consts.values()) + list(self.wgts.values()))
-        self.is_single = self.dtype.name in ['float32', 'complex64']
         if self.re_im_split: self.dtype = np.real(np.ones(1, dtype=self.dtype)).dtype
         self.shape = self._shape()
 
@@ -350,7 +349,7 @@ class LinearSolver:
 
     def _invert_lsqr_sparse(self, A, y, rcond):
         '''Use the scipy.sparse lsqr solver.'''
-        xhat = scipy.sparse.linalg.lsqr(A, y[...,0], atol=rcond, btol=rcond)[0] # XXX does this err for singular cases?
+        xhat = scipy.sparse.linalg.lsqr(A, y[...,0], atol=rcond, btol=rcond)[0]
         xhat.shape += (1,)
         return xhat
 
@@ -419,9 +418,17 @@ class LinearSolver:
         Args:
             rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
-            mode: 'default', 'lsqr', 'pinv', or 'solve', selects what inverter to use.  'default'
-                is best for most cases, but 'solve' may be faster for fully-constrained systems,
-                and 'pinv' can sometimes be more stable (but slower) than 'lsqr'.
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use. 
+                'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
+                'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
+                    the fastest solver.
+                'solve': uses numpy.linalg.solve to do an inversion-less solve.  Fastest, 
+                    but only works for fully constrained systems of equations.
+                'pinv': uses numpy.linalg.pinv to perform a pseudo-inverse and then solves.  Can
+                    sometimes be more numerically stable (but slower) than 'lsqr'.
+                All of these modes are superceded if the same system of equations applies
+                to all datapoints in an array.  In this case, a inverse-based method is used so
+                that the inverted matrix can be re-used to solve all array indices.
             verbose: print information about iterations
 
         Returns:
@@ -545,7 +552,6 @@ class LogProductSolver:
             except(KeyError): pass
         constants = kwargs.pop('constants', kwargs)
         self.dtype = infer_dtype(list(data.values()) + list(constants.values()) + list(wgts.values()))
-        self.is_single = self.dtype.name in ['float32', 'complex64']
         logamp_consts, logphs_consts = {}, {}
         for k in constants:
             c = np.log(constants[k]) # log unwraps complex circle at -pi
@@ -559,9 +565,17 @@ class LogProductSolver:
         Args:
             rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
-            mode: 'default', 'lsqr', 'pinv', or 'solve', selects what inverter to use.  'default'
-                is best for most cases, but 'solve' may be faster for fully-constrained systems,
-                and 'pinv' can sometimes be more stable (but slower) than 'lsqr'.
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use. 
+                'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
+                'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
+                    the fastest solver.
+                'solve': uses numpy.linalg.solve to do an inversion-less solve.  Fastest, 
+                    but only works for fully constrained systems of equations.
+                'pinv': uses numpy.linalg.pinv to perform a pseudo-inverse and then solves.  Can
+                    sometimes be more numerically stable (but slower) than 'lsqr'.
+                All of these modes are superceded if the same system of equations applies
+                to all datapoints in an array.  In this case, a inverse-based method is used so
+                that the inverted matrix can be re-used to solve all array indices.
             verbose: print information about iterations
 
         Returns:
@@ -572,6 +586,8 @@ class LogProductSolver:
         sol = {}
         for k in sol_amp:
             with warnings.catch_warnings():
+                # ignore warnings about casting complex to float, which only happens
+                # if there were no imaginary data to deal with.
                 warnings.simplefilter('ignore', np.ComplexWarning)
                 sol[k] = np.exp(sol_amp[k] + 
                     np.complex64(1j)*sol_phs[k]).astype(self.dtype)
@@ -624,7 +640,7 @@ class LinProductSolver:
         self.sols_kwargs.update(sol0)
         self.all_terms, self.taylors, self.taylor_keys = self.gen_taylors()
         self.build_solver(sol0) 
-        self.is_single = self.ls.is_single
+        self.dtype = self.ls.dtype
     
     def gen_taylors(self, keys=None):
         '''Parses all terms, performs a taylor expansion, and maps equation keys to taylor expansion keys.'''
@@ -691,9 +707,17 @@ class LinProductSolver:
         Args:
             rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
-            mode: 'default', 'lsqr', 'pinv', or 'solve', selects what inverter to use.  'default'
-                is best for most cases, but 'solve' may be faster for fully-constrained systems,
-                and 'pinv' can sometimes be more stable (but slower) than 'lsqr'.
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use. 
+                'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
+                'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
+                    the fastest solver.
+                'solve': uses numpy.linalg.solve to do an inversion-less solve.  Fastest, 
+                    but only works for fully constrained systems of equations.
+                'pinv': uses numpy.linalg.pinv to perform a pseudo-inverse and then solves.  Can
+                    sometimes be more numerically stable (but slower) than 'lsqr'.
+                All of these modes are superceded if the same system of equations applies
+                to all datapoints in an array.  In this case, a inverse-based method is used so
+                that the inverted matrix can be re-used to solve all array indices.
             verbose: print information about iterations
 
         Returns:
@@ -732,9 +756,17 @@ class LinProductSolver:
                 Converegence is measured L2-norm of the change in the solution of all the variables
                 divided by the L2-norm of the solution itself.
             maxiter: An integer maximum number of iterations to perform before quitting. Default 50.
-            mode: 'default', 'lsqr', 'pinv', or 'solve', selects what inverter to use.  'default'
-                is best for most cases, but 'solve' may be faster for fully-constrained systems,
-                and 'pinv' can sometimes be more stable (but slower) than 'lsqr'.
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use. 
+                'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
+                'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
+                    the fastest solver.
+                'solve': uses numpy.linalg.solve to do an inversion-less solve.  Fastest, 
+                    but only works for fully constrained systems of equations.
+                'pinv': uses numpy.linalg.pinv to perform a pseudo-inverse and then solves.  Can
+                    sometimes be more numerically stable (but slower) than 'lsqr'.
+                All of these modes are superceded if the same system of equations applies
+                to all datapoints in an array.  In this case, a inverse-based method is used so
+                that the inverted matrix can be re-used to solve all array indices.
             verbose: print information about iterations
 
         Returns: meta, sol
