@@ -347,11 +347,13 @@ class LinearSolver:
         except(np.linalg.LinAlgError):
             xhat = self._invert_pinv_sparse(A, y, rcond)
         return xhat
+
     def _invert_lsqr_sparse(self, A, y, rcond):
         '''Use the scipy.sparse lsqr solver.'''
         xhat = scipy.sparse.linalg.lsqr(A, y[...,0], atol=rcond, btol=rcond)[0] # XXX does this err for singular cases?
         xhat.shape += (1,)
         return xhat
+
     def _invert_pinv_sparse(self, A, y, rcond):
         '''Use pinv to invert AtA matrix.  Tends to be ~10x slower than lsqr for sparse matrices'''
         At = A.T.conj()
@@ -359,6 +361,7 @@ class LinearSolver:
         try: AtAi = np.linalg.pinv(AtA, rcond=rcond)
         except(np.linalg.LinAlgError): AtAi = np.linalg.inv(AtA)
         return AtAi.dot(At.dot(y)) 
+
     def _invert_solve_sparse(self, A, y, rcond):
         '''Use linalg.solve to solve a fully constrained (non-degenerate) system of equations.
         Tends to be ~3x slower than lsqr for sparse matrices.'''
@@ -367,6 +370,7 @@ class LinearSolver:
         Aty = At.dot(y) # automatically dense bc y is dense
         #xhat = scipy.sparse.linalg.spsolve(AtA, Aty)
         return np.linalg.solve(AtA, Aty)
+
     def _invert_lsqr(self, A, y, rcond):
         '''Use np.linalg.lstsq to solve a system of equations.  Usually the best 
         performer, but for a fully-constrained system, 'solve' can be faster.  Also,
@@ -375,6 +379,7 @@ class LinearSolver:
         xhat = np.linalg.lstsq(A, y[...,0], rcond=rcond)[0]
         xhat.shape += (1,)
         return xhat
+
     def _gen_AtAiAt(self, A, rcond):
         '''Helper function for forming (At A)^-1 At.  Uses pinv to invert.'''
         At = A.T.conj()
@@ -385,10 +390,12 @@ class LinearSolver:
             AtAi = np.linalg.inv(AtA)
         AtAiAt = AtAi.dot(A.T.conj()) 
         return AtAiAt
+
     def _invert_pinv(self, A, y, rcond):
         '''Use np.linalg.pinv to invert AtA matrix.  Tends to be about ~3x slower than solve.'''
         AtAiAt = self._gen_AtAiAt(A, rcond)
         return np.dot(AtAiAt,y)
+
     def _invert_solve(self, A, y, rcond):
         '''Use np.linalg.solve to solve a system of equations.  Requires a fully constrained
         system of equations (i.e. doesn't deal with singular matrices).  Can by ~1.5x faster that lstsq
@@ -397,6 +404,7 @@ class LinearSolver:
         AtA = At.dot(A)
         Aty = At.dot(y)
         return np.linalg.solve(AtA, Aty) # is supposed to error if singular, but doesn't seem to.
+
     def _invert_default(self, A, y, rcond):
         '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
         try:
@@ -404,6 +412,7 @@ class LinearSolver:
         except(np.linalg.LinAlgError):
             xhat = self._invert_pinv(A, y, rcond)
         return xhat
+
     def solve(self, rcond=1e-10, mode='default', verbose=False):
         """Compute x' = (At A)^-1 At * y, returning x' as dict of prms:values.
 
