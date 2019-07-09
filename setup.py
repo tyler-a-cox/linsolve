@@ -1,8 +1,7 @@
 from __future__ import absolute_import, division, print_function
 from setuptools import setup
-import glob
+import sys
 import os.path as op
-from os import listdir
 import json
 
 sys.path.append("linsolve")
