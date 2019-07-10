@@ -21,10 +21,10 @@ install:
   - conda info -a
 
   # create environment and install dependencies
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy=1.11.2 scipy nose pip matplotlib coverage
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION coveralls
   - source activate test-environment
-  - pip install coveralls
-  - python setup.py install
+  - conda env update -n test-environment -f environment.yml
+  - pip install .
 
 script: nosetests linsolve --with-coverage --cover-package=linsolve
 

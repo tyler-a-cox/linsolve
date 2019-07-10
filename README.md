@@ -81,19 +81,29 @@ issue log after verifying that the issue does not already exist.
 Comments on existing issues are also welcome.
 
 # Installation
+Preferred method of installation is `pip install .` 
+(or `pip install git+https://github.com/HERA-Team/linsolve`). This will install all
+dependencies. See below for manual management of dependencies.
+
 ## Dependencies
-First install dependencies. 
+If you use `conda` and would like to ensure that dependencies are installed with `conda`
+rather than `pip`, you should execute::
 
-* numpy >= 1.10
-* scipy
+    $ conda install "numpy>=1.10" scipy
 
-## Install linsolve
-Clone the repository using
-```git clone https://github.com/HERA-Team/linsolve.git```
 
-Navigate into the directory and run ```python setup.py install```.
-Note that this will automatically install any missing dependencies. If you use anaconda or another package manager you might prefer to first install the dependencies as described above.
+## Development
+If you are developing `linsolve`, it is recommended to create a fresh environment by::
 
-## Tests
-From the source linsolve directory run ```python tests/linsolve_test.py```.
+    $ git clone https://github.com/HERA-Team/linsolve.git
+    $ cd linsolve
+    $ conda create -n linsolve python=3
+    $ conda activate linsolve
+    $ conda env update -n linsolve -f environment.yml
+    $ pip install -e . 
+    
+This will install extra dependencies required for testing/development as well as the 
+standard ones.
+
+To run tests, just run `nosetests` in the top-level directory.
 

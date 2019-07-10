@@ -1,15 +1,15 @@
 from __future__ import absolute_import, division, print_function
 from setuptools import setup
-import glob
+import sys
 import os.path as op
-from os import listdir
-from linsolve import version
 import json
+
+sys.path.append("linsolve")
+import version
 
 data = [version.git_origin, version.git_hash, version.git_description, version.git_branch]
 with open(op.join('linsolve', 'GIT_INFO'), 'w') as outfile:
     json.dump(data, outfile)
-import glob
 
 setup_args = {
     'name': 'linsolve',

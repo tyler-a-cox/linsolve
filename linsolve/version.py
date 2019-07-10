@@ -1,9 +1,11 @@
 from __future__ import absolute_import, division, print_function
 
-import os
-import six
-import subprocess
 import json
+import os
+import subprocess
+import sys
+
+PY2 = sys.version_info < (3, 0)
 
 
 def construct_version_info():
@@ -22,24 +24,25 @@ def construct_version_info():
 
         data = data.strip()
 
-        if six.PY2:
+        if PY2:
             return data
         return data.decode('utf8')
 
     def unicode_to_str(u):
-        if six.PY2:
+        if PY2:
             return u.encode('utf8')
         return u
-
 
     version_file = os.path.join(linsolve_dir, 'VERSION')
     version = open(version_file).read().strip()
 
     try:
-        git_origin = get_git_output(['git', '-C', linsolve_dir, 'config', '--get', 'remote.origin.url'], capture_stderr=True)
+        git_origin = get_git_output(['git', '-C', linsolve_dir, 'config', '--get', 'remote.origin.url'],
+                                    capture_stderr=True)
         git_hash = get_git_output(['git', '-C', linsolve_dir, 'rev-parse', 'HEAD'], capture_stderr=True)
         git_description = get_git_output(['git', '-C', linsolve_dir, 'describe', '--dirty', '--tag', '--always'])
-        git_branch = get_git_output(['git', '-C', linsolve_dir, 'rev-parse', '--abbrev-ref', 'HEAD'], capture_stderr=True)
+        git_branch = get_git_output(['git', '-C', linsolve_dir, 'rev-parse', '--abbrev-ref', 'HEAD'],
+                                    capture_stderr=True)
         git_version = get_git_output(['git', '-C', linsolve_dir, 'describe', '--tags', '--abbrev=0'])
     except subprocess.CalledProcessError:
         try:
@@ -62,6 +65,7 @@ def construct_version_info():
                     'git_branch': git_branch}
     return version_info
 
+
 version_info = construct_version_info()
 version = version_info['version']
 git_origin = version_info['git_origin']
@@ -75,6 +79,7 @@ def main():
     print('git origin = {0}'.format(git_origin))
     print('git branch = {0}'.format(git_branch))
     print('git description = {0}'.format(git_description))
+
 
 if __name__ == '__main__':
     main()
