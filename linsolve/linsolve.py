@@ -174,10 +174,7 @@ class LinearEquation:
         for term in self.terms:
             p = self.prms[get_name(term[-1])]
             f = self.eval_consts(term[:-1], self.wgts)
-            if len(f.flatten()) == 1:
-                x,y,val = p.sparse_form(term[-1], eqnum, prm_order, f, re_im_split)
-            else:
-                x,y,val = p.sparse_form(term[-1], eqnum, prm_order, f.flatten(), re_im_split)
+            x,y,val = p.sparse_form(term[-1], eqnum, prm_order, f.flatten(), re_im_split)
             xs += x; ys += y; vals += val
         return xs, ys, vals
     
@@ -316,7 +313,7 @@ class LinearSolver:
         xs,ys,vals = self.sparse_form()
         ones = np.ones(self._A_shape()[2:],dtype=self.dtype)
         for n,val in enumerate(vals): 
-            if type(val) is not np.ndarray:
+            if not isinstance(val, np.ndarray) or val.size == 1:
                 vals[n] = ones*val
         return np.array(xs), np.array(ys), np.array(vals).T
     

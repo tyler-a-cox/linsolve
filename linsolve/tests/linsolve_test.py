@@ -446,6 +446,20 @@ class TestLinProductSolver(unittest.TestCase):
         np.testing.assert_almost_equal(sol['x'], x, 2)
         np.testing.assert_almost_equal(sol['y'], y, 2)
         np.testing.assert_almost_equal(sol['z'], z, 2)
+    def test_complex_array_NtimesNfreqs1_solve(self):
+        x = np.arange(1, dtype=np.complex); x.shape = (1,1)
+        y = np.arange(1, dtype=np.complex); y.shape = (1,1)
+        z = np.arange(1, dtype=np.complex); z.shape = (1,1)
+        d,w = {'x*y':x*y, 'x*z':x*z, 'y*z':y*z}, {}
+        for k in list(d.keys()): w[k] = np.ones(d[k].shape)
+        sol0 = {}
+        for k in 'xyz': sol0[k] = eval(k) + .01
+        ls = linsolve.LinProductSolver(d,sol0,w,sparse=self.sparse)
+        ls.prm_order = {'x':0,'y':1,'z':2}
+        sol = ls.solve()
+        np.testing.assert_almost_equal(sol['x'], x, 2)
+        np.testing.assert_almost_equal(sol['y'], y, 2)
+        np.testing.assert_almost_equal(sol['z'], z, 2)
     def test_sums_of_products(self):
         x = np.arange(1,31)*(1.0+1.0j); x.shape=(10,3) 
         y = np.arange(1,31)*(2.0-3.0j); y.shape=(10,3)
