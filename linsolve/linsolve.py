@@ -453,9 +453,12 @@ class LinearSolver:
             if Ashape[-1] == 1 and y.shape[-1] > 1: # can reuse inverse
                 A = A[...,0]
                 AtAiAt = self._gen_AtAiAt(A, rcond)
-                for k in range(y.shape[-1]):
-                    if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
-                    x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
+                x = np.dot(AtAiAt, y)
+                # XXX old way below factor of ~4 slower. All tests
+                # pass without. Necessary?
+                #for k in range(y.shape[-1]):
+                #    if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
+                #    x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
             else: # we can't reuse inverses
                 if mode == 'default': _invert = self._invert_default
                 elif mode == 'lsqr': _invert = self._invert_lsqr
