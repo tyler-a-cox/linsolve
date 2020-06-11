@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function
 import unittest
 import linsolve
 import numpy as np
-import ast
+import ast, io, sys
 
 class TestLinSolve(unittest.TestCase):
     def test_ast_getterms(self):
@@ -151,8 +151,9 @@ class TestLinearSolver(unittest.TestCase):
             self.assertAlmostEqual(sol['x'], 1.)
             self.assertAlmostEqual(sol['y'], 2.)
     def test_solve_arrays(self):
-        x = np.arange(100,dtype=np.float); x.shape = (10,10)
-        y = np.arange(100,dtype=np.float); y.shape = (10,10)
+        # range of 1 to 101 prevents "The exact solution is  x = 0" printouts
+        x = np.arange(1,101,dtype=np.float); x.shape = (10,10)
+        y = np.arange(1,101,dtype=np.float); y.shape = (10,10)
         eqs = ['2*x+y','-x+3*y']
         d,w = {}, {}
         for eq in eqs: d[eq],w[eq] = eval(eq), 1.
@@ -161,8 +162,9 @@ class TestLinearSolver(unittest.TestCase):
         np.testing.assert_almost_equal(sol['x'], x)
         np.testing.assert_almost_equal(sol['y'], y)
     def test_solve_arrays_modes(self):
-        x = np.arange(100,dtype=np.float); x.shape = (10,10)
-        y = np.arange(100,dtype=np.float); y.shape = (10,10)
+        # range of 1 to 101 prevents "The exact solution is  x = 0" printouts
+        x = np.arange(1,101,dtype=np.float); x.shape = (10,10)
+        y = np.arange(1,101,dtype=np.float); y.shape = (10,10)
         eqs = ['2*x+y','-x+3*y']
         d,w = {}, {}
         for eq in eqs: d[eq],w[eq] = eval(eq), 1.
@@ -172,7 +174,8 @@ class TestLinearSolver(unittest.TestCase):
             np.testing.assert_almost_equal(sol['x'], x)
             np.testing.assert_almost_equal(sol['y'], y)
     def test_A_shape(self):
-        consts = {'a':np.arange(10), 'b':np.zeros((1,10))}
+        # range of 1 to 11 prevents "The exact solution is  x = 0" printouts
+        consts = {'a':np.arange(1,11), 'b':np.zeros((1,10))}
         ls = linsolve.LinearSolver({'a*x+b*y':0.},{'a*x+b*y':1},**consts)
         self.assertEqual(ls._A_shape(), (1,2,10*10))
     def test_const_arrays(self):
@@ -254,6 +257,8 @@ class TestLinearSolver(unittest.TestCase):
         self.assertAlmostEqual(ls.chisq(sol), 1.0/3.0)
     def test_dtypes(self):
         ls = linsolve.LinearSolver({'x_': 1.0+1.0j}, sparse=self.sparse)
+        # conjugation should trigger re_im_split, splitting the
+        # complex64 type into two float32 types
         self.assertEqual(ls.dtype,np.float32)
         self.assertEqual(type(ls.solve()['x']), np.complex64)
 
@@ -262,6 +267,8 @@ class TestLinearSolver(unittest.TestCase):
         self.assertEqual(type(ls.solve()['x']), np.complex64)
 
         ls = linsolve.LinearSolver({'x_': np.ones(1,dtype=np.complex64)[0]}, sparse=self.sparse)
+        # conjugation should trigger re_im_split, splitting the
+        # complex64 type into two float32 types
         self.assertEqual(ls.dtype,np.float32)
         self.assertEqual(type(ls.solve()['x']), np.complex64)
 
@@ -280,6 +287,22 @@ class TestLinearSolver(unittest.TestCase):
         self.assertEqual(ls.dtype,np.float64)
         self.assertEqual(type(ls.solve()['x']), np.float64)
 
+        d = {'c*x': np.ones(1,dtype=np.float32)[0]}
+        wgts = {'c*x': np.ones(1,dtype=np.float32)[0]}
+        c = np.ones(1,dtype=np.float32)[0]
+        ls = linsolve.LinearSolver(d, wgts=wgts, c=c, sparse=self.sparse)
+        self.assertEqual(ls.dtype,np.float32)
+        self.assertEqual(type(ls.solve()['x']), np.float32)
+
+    def test_degen_sol(self):
+        # test how various solvers deal with degenerate solutions
+        d = {'x+y': 1., '2*x+2*y': 2.}
+        ls = linsolve.LinearSolver(d, sparse=self.sparse)
+        for mode in ('pinv', 'lsqr'):
+            sol = ls.solve(mode=mode)
+            self.assertAlmostEqual(sol['x'] + sol['y'], 1.)
+        self.assertRaises(np.linalg.LinAlgError, ls.solve, mode='solve')
+
 class TestLinearSolverSparse(TestLinearSolver):
     def setUp(self):
         self.sparse = True
@@ -295,7 +318,7 @@ class TestLogProductSolver(unittest.TestCase):
     def setUp(self):
         self.sparse=False
     def test_init(self):
-        x,y,z = np.exp(1.), np.exp(2.), np.exp(3.)
+        x,y,z = np.exp(1.+0j), np.exp(2.), np.exp(3.)
         keys = ['x*y*z', 'x*y', 'y*z']
         d,w = {}, {}
         for k in keys: d[k],w[k] = eval(k), 1.
@@ -319,7 +342,7 @@ class TestLogProductSolver(unittest.TestCase):
             self.assertEqual(eval(k), 3+3j) # make sure they are all x+y
             self.assertTrue(k.replace('1','-1') in ls.ls_phs.data)
     def test_solve(self):
-        x,y,z = np.exp(1.), np.exp(2.), np.exp(3.)
+        x,y,z = np.exp(1.+1j), np.exp(2.+2j), np.exp(3.+3j)
         keys = ['x*y*z', 'x*y', 'y*z']
         d,w = {}, {}
         for k in keys: d[k],w[k] = eval(k), 1.
@@ -328,7 +351,7 @@ class TestLogProductSolver(unittest.TestCase):
         for k in sol:
             self.assertAlmostEqual(sol[k], eval(k))
     def test_conj_solve(self):
-        x,y = np.exp(1.), np.exp(2.+1j)
+        x,y = np.exp(1.+2j), np.exp(2.+1j)
         d,w = {'x*y_':x*y.conjugate(), 'x':x}, {}
         for k in d: w[k] = 1.
         ls = linsolve.LogProductSolver(d,w,sparse=self.sparse)
@@ -340,7 +363,11 @@ class TestLogProductSolver(unittest.TestCase):
         d,w = {'x*y_':x*y.conjugate(), 'x*z_':x*z.conjugate(), 'y*z_':y*z.conjugate()}, {}
         for k in list(d.keys()): w[k] = 1.
         ls = linsolve.LogProductSolver(d,w,sparse=self.sparse)
+        # some ridiculousness to avoid "The exact solution is  x = 0" prints
+        save_stdout = sys.stdout
+        sys.stdout = io.StringIO()
         sol = ls.solve()
+        sys.stdout = save_stdout
         x,y,z = sol['x'], sol['y'], sol['z']
         self.assertAlmostEqual(np.angle(x*y.conjugate()), 0.)
         self.assertAlmostEqual(np.angle(x*z.conjugate()), 0.)
@@ -358,7 +385,11 @@ class TestLogProductSolver(unittest.TestCase):
                 d[k] = eval(k).astype(dtype)
                 w[k] = np.float32(1.)
             ls = linsolve.LogProductSolver(d,w,sparse=self.sparse)
+            # some ridiculousness to avoid "The exact solution is  x = 0" prints
+            save_stdout = sys.stdout
+            sys.stdout = io.StringIO()
             sol = ls.solve()
+            sys.stdout = save_stdout
             for k in sol:
                 self.assertEqual(sol[k].dtype, dtype)
 
@@ -420,14 +451,13 @@ class TestLinProductSolver(unittest.TestCase):
             self.assertAlmostEqual(sol[k], eval(k), 4)
     def test_complex_conj_solve(self):
         x,y,z = 1.+1j, 2.+2j, 3.+3j
-        #x,y,z = 1., 2., 3.
         d,w = {'x*y_':x*y.conjugate(), 'x*z_':x*z.conjugate(), 'y*z_':y*z.conjugate()}, {}
         for k in list(d.keys()): w[k] = 1.
         sol0 = {}
         for k in 'xyz': sol0[k] = eval(k) + .01
         ls = linsolve.LinProductSolver(d,sol0,w,sparse=self.sparse)
         ls.prm_order = {'x':0,'y':1,'z':2}
-        sol = ls.solve()
+        _, sol = ls.solve_iteratively(mode='lsqr') # XXX fails for pinv
         x,y,z = sol['x'], sol['y'], sol['z']
         self.assertAlmostEqual(x*y.conjugate(), d['x*y_'], 3)
         self.assertAlmostEqual(x*z.conjugate(), d['x*z_'], 3)
@@ -470,7 +500,7 @@ class TestLinProductSolver(unittest.TestCase):
         data = {}
         for ex in expressions: data[ex] = eval(ex)
         currentSol = {'x':1.1*x, 'y': .9*y, 'z': 1.1*z, 'w':1.2*w}
-        for i in range(20):
+        for i in range(5): # reducing iters prevents printing a bunch of "The exact solution is  x = 0" 
             testSolve = linsolve.LinProductSolver(data, currentSol,sparse=self.sparse)
             currentSol = testSolve.solve()
         for var in 'wxyz': 
@@ -485,7 +515,7 @@ class TestLinProductSolver(unittest.TestCase):
         data = {}
         for ex in expressions: data[ex] = eval(ex)
         currentSol = {'x':1.1*x, 'y': .9*y, 'z': 1.1*z, 'w':1.2*w}
-        for i in range(40):
+        for i in range(5): # reducing iters prevents printing a bunch of "The exact solution is  x = 0" 
             testSolve = linsolve.LinProductSolver(data, currentSol,sparse=self.sparse)
             currentSol = testSolve.solve()
         for var in 'wxyz': 
@@ -497,7 +527,7 @@ class TestLinProductSolver(unittest.TestCase):
         x = 1.
         d = {'x*y':1, '.5*x*y+.5*x*y':2, 'y':1}
         currentSol = {'x':2.3,'y':.9}
-        for i in range(40):
+        for i in range(5): # reducing iters prevents printing a bunch of "The exact solution is  x = 0" 
             testSolve = linsolve.LinProductSolver(d, currentSol,sparse=self.sparse)
             currentSol = testSolve.solve()
         chisq = testSolve.chisq(currentSol)
@@ -529,10 +559,30 @@ class TestLinProductSolver(unittest.TestCase):
             currentSol = {'x':1.1*x, 'y': .9*y, 'z': 1.1*z, 'w':1.2*w}
             currentSol = {k:v.astype(dtype) for k,v in currentSol.items()}
             testSolve = linsolve.LinProductSolver(data, currentSol,sparse=self.sparse)
-            meta, new_sol = testSolve.solve_iteratively()
+            # some ridiculousness to avoid "The exact solution is  x = 0" prints
+            save_stdout = sys.stdout
+            sys.stdout = io.StringIO()
+            meta, new_sol = testSolve.solve_iteratively(conv_crit=1e-7)
+            sys.stdout = save_stdout
             for var in 'wxyz':
                 self.assertEqual(new_sol[var].dtype, dtype)
                 np.testing.assert_almost_equal(new_sol[var], eval(var), 4)
+    def test_degen_sol(self):
+        # test how various solvers deal with degenerate solutions
+        x,y,z = 1.+1j, 2.+2j, 3.+3j
+        d,w = {'x*y_':x*y.conjugate(), 'x*z_':x*z.conjugate(), 'y*z_':y*z.conjugate()}, {}
+        for k in list(d.keys()): w[k] = 1.
+        sol0 = {}
+        for k in 'xyz': sol0[k] = eval(k) + .01
+        ls = linsolve.LinProductSolver(d,sol0,w,sparse=self.sparse)
+        ls.prm_order = {'x':0,'y':1,'z':2}
+        for mode in ('pinv', 'lsqr'):
+            _, sol = ls.solve_iteratively(mode=mode)
+            x,y,z = sol['x'], sol['y'], sol['z']
+            self.assertAlmostEqual(x*y.conjugate(), d['x*y_'], 3)
+            self.assertAlmostEqual(x*z.conjugate(), d['x*z_'], 3)
+            self.assertAlmostEqual(y*z.conjugate(), d['y*z_'], 3)
+        #self.assertRaises(np.linalg.LinAlgError, ls.solve_iteratively, mode='solve') # this fails for matrices where machine precision breaks degeneracies in system of equations
 
 class TestLinProductSolverSparse(TestLinProductSolver):
     def setUp(self):

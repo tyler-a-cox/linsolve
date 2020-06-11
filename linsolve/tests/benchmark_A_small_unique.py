@@ -8,6 +8,8 @@ NPRMS = 10
 NEQS = 100
 SIZE = 100000
 MODE = 'solve'
+#MODE = 'lsqr'
+#MODE = 'pinv'
 
 prms = {'g%d' % i: np.arange(SIZE) for i in range(NPRMS)}
 prm_list = list(prms.keys())
