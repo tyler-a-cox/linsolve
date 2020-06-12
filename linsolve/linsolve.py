@@ -383,9 +383,12 @@ class LinearSolver:
         # XXX look for https://github.com/numpy/numpy/issues/8720
         # to add ability for lstsq to work on stacks of matrices
         # (eliminating the slow 'for' loop).
-        Ashape = self._A_shape()
-        #x = [np.linalg.lstsq(A[...,min(k,Ashape[-1]-1)], 
-        x = [np.linalg.lstsq(A[...,k], y[...,k], rcond=rcond)[0]
+        # np.linalg.lstsq uses lapack gelsd and is slower:
+        # see https://stackoverflow.com/questions/55367024/fastest-way-of-solving-linear-least-squares
+        #x = [np.linalg.lstsq(A[...,k], y[...,k], rcond=rcond)[0]
+        #              for k in range(y.shape[-1])]
+        x = [scipy.linalg.lstsq(A[...,k], y[...,k],
+                                cond=rcond, lapack_driver='gelsy')[0]
                       for k in range(y.shape[-1])]
         return np.array(x).T
 
@@ -403,18 +406,12 @@ class LinearSolver:
     def _invert_pinv(self, A, y, rcond):
         '''Use np.linalg.pinv to invert AtA matrix.  Tends to be about ~3x slower than solve.'''
         # As of numpy 1.14, pinv works on stacks of matrices
-        #Ashape = self._A_shape()
-        At = A.transpose([1,0,2]).conj()
-        AtA = [np.dot(At[...,k], A[...,k]) for k in range(y.shape[-1])]
-        #AtA = [np.dot(A[...,k].T.conj(), A[...,k]) 
-                    #for k in np.arange(y.shape[-1]).clip(0,Ashape[-1]-1)]
+        At = A.transpose([2,1,0]).conj()
+        AtA = [np.dot(At[k], A[...,k]) for k in range(y.shape[-1])]
+        # AtA = np.einsum('jin,jkn->nik', A.conj(), A, optimize=True) # slower
         AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
-        #import IPython; IPython.embed()
-        x = [np.dot(AtAi[k], np.dot(At[...,k], y[...,k]))
-                    for k in range(y.shape[-1])]
-        #x = [np.dot(AtAi[k], np.dot(A[...,k].T.conj(), y[...,k]))
-                    #for k in np.arange(y.shape[-1]).clip(0,Ashape[-1]-1)]
-        return np.array(x).T
+        x = np.einsum('nij,njk,kn->in', AtAi, At, y, optimize=True)
+        return x
 
     def _invert_solve(self, A, y, rcond):
         '''Use np.linalg.solve to solve a system of equations.  Requires a fully constrained
@@ -422,32 +419,20 @@ class LinearSolver:
         for this case. 'rcond' is unused, but passed as an argument to match the interface of other
         _invert methods.'''
         # As of numpy 1.8, solve works on stacks of matrices
-        #Ashape = self._A_shape()
-        At = A.transpose([1,0,2]).conj()
-        #AtA = ([np.dot(A[...,min(k,Ashape[-1]-1)].T.conj(), A[...,min(k,Ashape[-1]-1)]) for k in range(y.shape[-1])])
-        AtA = [np.dot(At[...,k], A[...,k]) for k in range(y.shape[-1])]
-        #Aty = ([np.dot(A[...,min(k,Ashape[-1]-1)].T.conj(), y[...,k]) for k in range(y.shape[-1])])
+        At = A.transpose([2,1,0]).conj()
+        AtA = [np.dot(At[k], A[...,k]) for k in range(y.shape[-1])]
         # XXX figure out why k was clipped at Ashape[-1] - 1
-        Aty = [np.dot(At[...,k], y[...,k]) for k in range(y.shape[-1])]
-        return np.linalg.solve(AtA, Aty).T # supposed to error if singular, but doesn't seem to.
+        Aty = [np.dot(At[k], y[...,k]) for k in range(y.shape[-1])]
+        return np.linalg.solve(AtA, Aty).T # sometimes errors if singular
         #return scipy.linalg.solve(AtA, Aty, 'her') # slower by about 50%
 
     def _invert_default(self, A, y, rcond):
         '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
-                #for k in range(y.shape[-1]):
-                #    if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
-                #    Ak = A[...,min(k,Ashape[-1]-1)]
-                #    x[...,k:k+1] = _invert(Ak, y[...,k:k+1], rcond)
         # XXX doesn't deal w/ fact that individual matrices might
         # fail for one inversion method.
         # XXX for now, lsqr is slower than pinv, but that may
         # change once numpy supports stacks of matrices
         return self._invert_pinv(A, y, rcond)
-        #try:
-        #    xhat = self._invert_lsqr(A, y, rcond)
-        #except(np.linalg.LinAlgError):
-        #    xhat = self._invert_pinv(A, y, rcond)
-        #return xhat
 
     def solve(self, rcond=None, mode='default', verbose=False):
         """Compute x' = (At A)^-1 At * y, returning x' as dict of prms:values.

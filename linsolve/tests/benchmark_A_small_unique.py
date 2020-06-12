@@ -7,9 +7,9 @@ np.random.seed(0)
 NPRMS = 10
 NEQS = 100
 SIZE = 100000
-MODE = 'solve'
-#MODE = 'lsqr'
-#MODE = 'pinv'
+#MODE = 'solve' # 1.56 s
+MODE = 'lsqr' # 5.4 s
+#MODE = 'pinv' # 3.4 s
 
 prms = {'g%d' % i: np.arange(SIZE) for i in range(NPRMS)}
 prm_list = list(prms.keys())
