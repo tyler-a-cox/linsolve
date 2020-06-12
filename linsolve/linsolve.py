@@ -392,16 +392,13 @@ class LinearSolver:
                       for k in range(y.shape[-1])]
         return np.array(x).T
 
-    def _gen_AtAiAt(self, A, rcond):
+    def _invert_pinv_shared(self, A, y, rcond):
         '''Helper function for forming (At A)^-1 At.  Uses pinv to invert.'''
         At = A.T.conj()
-        AtA = At.dot(A)
-        try:
-            AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
-        except(np.linalg.LinAlgError): 
-            AtAi = np.linalg.inv(AtA)
-        AtAiAt = AtAi.dot(A.T.conj()) 
-        return AtAiAt
+        AtA = np.dot(At, A)
+        AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
+        x = np.einsum('ij,jk,kn->in', AtAi, At, y, optimize=True)
+        return x
 
     def _invert_pinv(self, A, y, rcond):
         '''Use np.linalg.pinv to invert AtA matrix.  Tends to be about ~3x slower than solve.'''
@@ -477,16 +474,7 @@ class LinearSolver:
             A = self.get_A()
             assert(A.ndim == 3)
             if Ashape[-1] == 1 and y.shape[-1] > 1: # can reuse inverse
-                A = A[...,0]
-                # finding inverse is about 3x slower than solve
-                AtAiAt = self._gen_AtAiAt(A, rcond)
-                x = np.dot(AtAiAt, y)
-                # XXX old way below factor of ~4 slower for 
-                # benchmark_A_small_shared. All tests pass without loop. 
-                # Necessary?
-                #for k in range(y.shape[-1]):
-                #    if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
-                #    x[...,k:k+1] = np.dot(AtAiAt,y[...,k:k+1])
+                x = self._invert_pinv_shared(A[...,0], y, rcond)
             else: # we can't reuse inverses
                 if mode == 'default': _invert = self._invert_default
                 elif mode == 'lsqr': _invert = self._invert_lsqr
