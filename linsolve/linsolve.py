@@ -397,7 +397,8 @@ class LinearSolver:
         At = A.T.conj()
         AtA = np.dot(At, A)
         AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
-        x = np.einsum('ij,jk,kn->in', AtAi, At, y, optimize=True)
+        # x = np.einsum('ij,jk,kn->in', AtAi, At, y, optimize=True) # slow for small matrices
+        x = np.dot(AtAi, np.dot(At, y))
         return x
 
     def _invert_pinv(self, A, y, rcond):
