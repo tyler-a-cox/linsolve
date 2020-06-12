@@ -6,10 +6,10 @@ np.random.seed(0)
 
 NPRMS = 10
 NEQS = 100
-SIZE = 10000 # 100000
-MODE = 'solve' # sparse: 6.9 s
-#MODE = 'lsqr'  # sparse: 11.5 s
-#MODE = 'pinv'  # sparse: 7.4 s
+SIZE = 100000
+MODE = 'solve' # sparse: 0.43 s
+#MODE = 'lsqr'  # sparse: 3.8 s
+#MODE = 'pinv'  # sparse: 2.72 s
 
 prms = {'g%d' % i: np.arange(SIZE) for i in range(NPRMS)}
 prm_list = list(prms.keys())

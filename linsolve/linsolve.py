@@ -352,8 +352,7 @@ class LinearSolver:
         # (eliminating the slow 'for' loop).
         # np.linalg.lstsq uses lapack gelsd and is slower:
         # see https://stackoverflow.com/questions/55367024/fastest-way-of-solving-linear-least-squares
-        #x = [np.linalg.lstsq(A[...,k], y[...,k], rcond=rcond)[0]
-        #              for k in range(y.shape[-1])]
+        #x = [np.linalg.lstsq(A[...,k], y[...,k], rcond=rcond)[0] for k in range(y.shape[-1])]
         x = [scipy.linalg.lstsq(A[...,k], y[...,k],
                                 cond=rcond, lapack_driver='gelsy')[0]
                       for k in range(y.shape[-1])]
@@ -361,12 +360,11 @@ class LinearSolver:
 
     def _invert_lsqr_sparse(self, xs_ys_vals, y, rcond):
         '''Use the scipy.sparse lsqr solver.'''
-        xs, ys, vals = xs_ys_vals
-        A = [csc_matrix((vals[k], (xs, ys))) 
-                for k in range(y.shape[-1])]
-        x = [scipy.sparse.linalg.lsqr(A[k], y[...,k],
-                                      atol=rcond, btol=rcond)[0]
-                for k in range(y.shape[-1])]
+        # x = [scipy.sparse.linalg.lsqr(A[k], y[...,k], atol=rcond, btol=rcond)[0] for k in range(y.shape[-1])] # this is crazy slow for unknown reasons
+        AtA, Aty = self._get_AtA_Aty_sparse(xs_ys_vals, y)
+        x = [scipy.linalg.lstsq(AtA[k], Aty[k],
+                                cond=rcond, lapack_driver='gelsy')[0]
+                      for k in range(y.shape[-1])]
         return np.array(x).T
 
     def _invert_pinv_shared(self, A, y, rcond):
@@ -398,16 +396,35 @@ class LinearSolver:
         x = np.einsum('nij,njk,kn->in', AtAi, At, y, optimize=True)
         return x
 
+    def _get_AtA_Aty_sparse(self, xs_ys_vals, y):
+        xs, ys, vals = xs_ys_vals
+        # rolling our own sparse representation b/c scipy.sparse
+        # can't share sparsity over a 3rd axis and remaking
+        # sparse matrices for each value is too slow
+        A = {}
+        # can below be coded as a comprehension? need to be sure
+        # to sum over repeat xs...
+        for _y,_x,_v in zip(ys, xs, vals.T):
+            try:
+                A[_y][_x] = A[_y].get(_x, 0) + _v
+            except(KeyError):
+                A[_y] = {_x: _v}
+        nprms = self._A_shape()[1]
+        AtA = np.empty((y.shape[-1], nprms, nprms), dtype=self.dtype)
+        Aty = np.empty((y.shape[-1], nprms), dtype=self.dtype)
+        for i in range(AtA.shape[1]):
+            Aty[:,i] = sum([A[i][x].conj() * y[x] for x in A[i]])
+            for j in range(i, AtA.shape[1]):
+                AtA[:,i,j] = sum([A[i][x].conj() * A[j][x]
+                    for x in A[i] if x in A[j]])
+                AtA[:,j,i] = AtA[:,i,j].conj() # explicitly hermitian
+        return AtA, Aty
+
     def _invert_pinv_sparse(self, xs_ys_vals, y, rcond):
         '''Use pinv to invert AtA matrix.  Tends to be ~10x slower than lsqr for sparse matrices'''
-        xs, ys, vals = xs_ys_vals
-        A = [csc_matrix((vals[k], (xs, ys))) 
-                for k in range(y.shape[-1])]
-        AtA = [A[k].T.conj().dot(A[k]).toarray()
-                for k in range(y.shape[-1])]
+        AtA, Aty = self._get_AtA_Aty_sparse(xs_ys_vals, y)
         AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
-        x = [np.dot(AtAi[k], A[k].T.conj().dot(y[...,k]))
-                for k in range(y.shape[-1])]
+        x = [np.dot(AtAi[k], Aty[k]) for k in range(y.shape[-1])]
         return np.array(x).T
 
     def _invert_solve(self, A, y, rcond):
@@ -426,14 +443,8 @@ class LinearSolver:
         '''Use linalg.solve to solve a fully constrained (non-degenerate) system of equations.
         Tends to be ~3x slower than lsqr for sparse matrices.  'rcond' is unused, but passed
         as an argument to match the interface of other _invert methods.'''
-        xs, ys, vals = xs_ys_vals
-        A = [csc_matrix((vals[k], (xs, ys))) 
-                for k in range(y.shape[-1])]
-        AtA = [A[k].T.conj().dot(A[k]).toarray()
-                for k in range(y.shape[-1])]
-        Aty = [A[k].T.conj().dot(y[...,k])
-                for k in range(y.shape[-1])]
-        #x = scipy.sparse.linalg.spsolve(AtA, Aty)
+        AtA, Aty = self._get_AtA_Aty_sparse(xs_ys_vals, y)
+        #x = scipy.sparse.linalg.spsolve(AtA, Aty) # AtA and Aty don't end up being that sparse, usually
         return np.linalg.solve(AtA, Aty).T
 
     def _invert_default(self, A, y, rcond):

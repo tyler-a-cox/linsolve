@@ -253,7 +253,7 @@ class TestLinearSolver(unittest.TestCase):
         ls = linsolve.LinearSolver(d, wgts=w, sparse=self.sparse)
         sol = ls.solve()
         chisq = ls.chisq(sol)
-        self.assertAlmostEqual(sol['x'], 5.0/3.0)
+        self.assertAlmostEqual(sol['x'], 5.0/3.0, 6)
         self.assertAlmostEqual(ls.chisq(sol), 1.0/3.0)
     def test_dtypes(self):
         ls = linsolve.LinearSolver({'x_': 1.0+1.0j}, sparse=self.sparse)
