@@ -29,7 +29,7 @@ For more detail on usage, see linsolve_example.ipynb
 
 import numpy as np
 import ast
-from scipy.sparse import lil_matrix, csr_matrix
+from scipy.sparse import csr_matrix, csc_matrix
 import scipy.sparse.linalg
 import scipy.linalg
 import warnings
@@ -315,7 +315,7 @@ class LinearSolver:
         for n,val in enumerate(vals): 
             if not isinstance(val, np.ndarray) or val.size == 1:
                 vals[n] = ones*val
-        return np.array(xs), np.array(ys), np.array(vals).T
+        return np.array(xs), np.array(ys), np.array(vals, dtype=self.dtype).T
     
     def get_weighted_data(self):
         '''Return y = data * wgt**.5 as a 2D vector, regardless of original data/wgt shape.'''
@@ -342,39 +342,6 @@ class LinearSolver:
             return rv
         else: return d
     
-    def _invert_default_sparse(self, A, y, rcond):
-        '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
-        try:
-            xhat = self._invert_lsqr_sparse(A, y, rcond)
-        except(np.linalg.LinAlgError):
-            xhat = self._invert_pinv_sparse(A, y, rcond)
-        return xhat
-
-    def _invert_lsqr_sparse(self, A, y, rcond):
-        '''Use the scipy.sparse lsqr solver.'''
-        xhat = scipy.sparse.linalg.lsqr(A, y[...,0], atol=rcond, btol=rcond)[0]
-        xhat.shape += (1,)
-        return xhat
-
-    def _invert_pinv_sparse(self, A, y, rcond):
-        '''Use pinv to invert AtA matrix.  Tends to be ~10x slower than lsqr for sparse matrices'''
-        At = A.T.conj()
-        AtA = At.dot(A).toarray()
-        try: AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
-        #try: AtAi = scipy.linalg.pinvh(AtA, rcond=rcond)
-        except(np.linalg.LinAlgError): AtAi = np.linalg.inv(AtA)
-        return AtAi.dot(At.dot(y)) 
-
-    def _invert_solve_sparse(self, A, y, rcond):
-        '''Use linalg.solve to solve a fully constrained (non-degenerate) system of equations.
-        Tends to be ~3x slower than lsqr for sparse matrices.  'rcond' is unused, but passed
-        as an argument to match the interface of other _invert methods.'''
-        At = A.T.conj()
-        AtA = At.dot(A).toarray()
-        Aty = At.dot(y) # automatically dense bc y is dense
-        #xhat = scipy.sparse.linalg.spsolve(AtA, Aty)
-        return np.linalg.solve(AtA, Aty)
-
     def _invert_lsqr(self, A, y, rcond):
         '''Use np.linalg.lstsq to solve a system of equations.  Usually the best 
         performer, but for a fully-constrained system, 'solve' can be faster.  Also,
@@ -392,6 +359,16 @@ class LinearSolver:
                       for k in range(y.shape[-1])]
         return np.array(x).T
 
+    def _invert_lsqr_sparse(self, xs_ys_vals, y, rcond):
+        '''Use the scipy.sparse lsqr solver.'''
+        xs, ys, vals = xs_ys_vals
+        A = [csc_matrix((vals[k], (xs, ys))) 
+                for k in range(y.shape[-1])]
+        x = [scipy.sparse.linalg.lsqr(A[k], y[...,k],
+                                      atol=rcond, btol=rcond)[0]
+                for k in range(y.shape[-1])]
+        return np.array(x).T
+
     def _invert_pinv_shared(self, A, y, rcond):
         '''Helper function for forming (At A)^-1 At.  Uses pinv to invert.'''
         At = A.T.conj()
@@ -399,6 +376,16 @@ class LinearSolver:
         AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
         # x = np.einsum('ij,jk,kn->in', AtAi, At, y, optimize=True) # slow for small matrices
         x = np.dot(AtAi, np.dot(At, y))
+        return x
+
+    def _invert_pinv_shared_sparse(self, xs_ys_vals, y, rcond):
+        '''Use pinv to invert AtA matrix.  Tends to be ~10x slower than lsqr for sparse matrices'''
+        xs, ys, vals = xs_ys_vals
+        A = csc_matrix((vals[0], (xs, ys)))
+        At = A.T.conj()
+        AtA = At.dot(A).toarray() # make dense after sparse dot product
+        AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
+        x = np.dot(AtAi, At.dot(y))
         return x
 
     def _invert_pinv(self, A, y, rcond):
@@ -411,6 +398,18 @@ class LinearSolver:
         x = np.einsum('nij,njk,kn->in', AtAi, At, y, optimize=True)
         return x
 
+    def _invert_pinv_sparse(self, xs_ys_vals, y, rcond):
+        '''Use pinv to invert AtA matrix.  Tends to be ~10x slower than lsqr for sparse matrices'''
+        xs, ys, vals = xs_ys_vals
+        A = [csc_matrix((vals[k], (xs, ys))) 
+                for k in range(y.shape[-1])]
+        AtA = [A[k].T.conj().dot(A[k]).toarray()
+                for k in range(y.shape[-1])]
+        AtAi = np.linalg.pinv(AtA, rcond=rcond, hermitian=True)
+        x = [np.dot(AtAi[k], A[k].T.conj().dot(y[...,k]))
+                for k in range(y.shape[-1])]
+        return np.array(x).T
+
     def _invert_solve(self, A, y, rcond):
         '''Use np.linalg.solve to solve a system of equations.  Requires a fully constrained
         system of equations (i.e. doesn't deal with singular matrices).  Can by ~1.5x faster that lstsq
@@ -419,10 +418,23 @@ class LinearSolver:
         # As of numpy 1.8, solve works on stacks of matrices
         At = A.transpose([2,1,0]).conj()
         AtA = [np.dot(At[k], A[...,k]) for k in range(y.shape[-1])]
-        # XXX figure out why k was clipped at Ashape[-1] - 1
         Aty = [np.dot(At[k], y[...,k]) for k in range(y.shape[-1])]
         return np.linalg.solve(AtA, Aty).T # sometimes errors if singular
         #return scipy.linalg.solve(AtA, Aty, 'her') # slower by about 50%
+
+    def _invert_solve_sparse(self, xs_ys_vals, y, rcond):
+        '''Use linalg.solve to solve a fully constrained (non-degenerate) system of equations.
+        Tends to be ~3x slower than lsqr for sparse matrices.  'rcond' is unused, but passed
+        as an argument to match the interface of other _invert methods.'''
+        xs, ys, vals = xs_ys_vals
+        A = [csc_matrix((vals[k], (xs, ys))) 
+                for k in range(y.shape[-1])]
+        AtA = [A[k].T.conj().dot(A[k]).toarray()
+                for k in range(y.shape[-1])]
+        Aty = [A[k].T.conj().dot(y[...,k])
+                for k in range(y.shape[-1])]
+        #x = scipy.sparse.linalg.spsolve(AtA, Aty)
+        return np.linalg.solve(AtA, Aty).T
 
     def _invert_default(self, A, y, rcond):
         '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
@@ -431,6 +443,10 @@ class LinearSolver:
         # XXX for now, lsqr is slower than pinv, but that may
         # change once numpy supports stacks of matrices
         return self._invert_pinv(A, y, rcond)
+
+    def _invert_default_sparse(self, xs_ys_vals, y, rcond):
+        '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
+        return self._invert_pinv_sparse(xs_ys_vals, y, rcond)
 
     def solve(self, rcond=None, mode='default', verbose=False):
         """Compute x' = (At A)^-1 At * y, returning x' as dict of prms:values.
@@ -461,16 +477,15 @@ class LinearSolver:
         y = self.get_weighted_data()
         Ashape = self._A_shape()
         if self.sparse:
-            if mode == 'default': _invert = self._invert_default_sparse
-            elif mode == 'lsqr': _invert = self._invert_lsqr_sparse
-            elif mode == 'pinv': _invert = self._invert_pinv_sparse
-            elif mode == 'solve': _invert = self._invert_solve_sparse
             xs, ys, vals = self.get_A_sparse()
-            x = np.empty((Ashape[1],y.shape[-1]), dtype=self.dtype)
-            for k in range(y.shape[-1]):
-                if verbose: print('Solving %d/%d' % (k, y.shape[-1]))
-                Ak = csr_matrix((vals[min(k,Ashape[-1]-1)], (xs,ys))) 
-                x[...,k:k+1] = _invert(Ak, y[...,k:k+1], rcond)
+            if vals.shape[0] == 1 and y.shape[-1] > 1: # reuse inverse
+                x = self._invert_pinv_shared_sparse((xs,ys,vals), y, rcond)
+            else: # we can't reuse inverses
+                if mode == 'default': _invert = self._invert_default_sparse
+                elif mode == 'lsqr': _invert = self._invert_lsqr_sparse
+                elif mode == 'pinv': _invert = self._invert_pinv_sparse
+                elif mode == 'solve': _invert = self._invert_solve_sparse
+                x = _invert((xs,ys,vals), y, rcond)
         else: 
             A = self.get_A()
             assert(A.ndim == 3)

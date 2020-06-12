@@ -240,13 +240,13 @@ class TestLinearSolver(unittest.TestCase):
         ls = linsolve.LinearSolver(d,a=1.0, sparse=self.sparse)
         sol = ls.solve()
         chisq = ls.chisq(sol)
-        np.testing.assert_equal(chisq, .5)
+        np.testing.assert_almost_equal(chisq, .5)
         x = 1.
         d = {'x':1, '1.0*x':2}
         ls = linsolve.LinearSolver(d, sparse=self.sparse)
         sol = ls.solve()
         chisq = ls.chisq(sol)
-        np.testing.assert_equal(chisq, .5)
+        np.testing.assert_almost_equal(chisq, .5)
         x = 1.
         d = {'1*x': 2.0, 'x': 1.0}
         w = {'1*x': 1.0, 'x': .5}
@@ -300,7 +300,7 @@ class TestLinearSolver(unittest.TestCase):
         ls = linsolve.LinearSolver(d, sparse=self.sparse)
         for mode in ('pinv', 'lsqr'):
             sol = ls.solve(mode=mode)
-            self.assertAlmostEqual(sol['x'] + sol['y'], 1.)
+            self.assertAlmostEqual(sol['x'] + sol['y'], 1., 6)
         self.assertRaises(np.linalg.LinAlgError, ls.solve, mode='solve')
 
 class TestLinearSolverSparse(TestLinearSolver):

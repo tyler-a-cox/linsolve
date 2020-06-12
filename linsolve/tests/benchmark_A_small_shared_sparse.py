@@ -7,17 +7,17 @@ np.random.seed(0)
 NPRMS = 10
 NEQS = 100
 SIZE = 1000000
-# dense: 0.48 s
+# sparse: 0.82 s
 
 prms = {'g%d' % i: np.arange(SIZE) for i in range(NPRMS)}
 prm_list = list(prms.keys())
 
-eqs = [('+'.join(['%s'] * 5))  % tuple(random.sample(prm_list, 5)) 
+eqs = [('+'.join(['%s'] * 3))  % tuple(random.sample(prm_list, 3)) 
             for i in range(NEQS)]
 
 data = {eq: eval(eq, prms) for eq in eqs}
 
-ls = linsolve.LinearSolver(data, sparse=False)
+ls = linsolve.LinearSolver(data, sparse=True)
 t0 = time.time()
 sol = ls.solve()
 t1 = time.time()

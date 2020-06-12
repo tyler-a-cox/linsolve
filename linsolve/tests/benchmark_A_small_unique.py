@@ -7,9 +7,9 @@ np.random.seed(0)
 NPRMS = 10
 NEQS = 100
 SIZE = 100000
-#MODE = 'solve' # 1.56 s
-MODE = 'lsqr' # 5.4 s
-#MODE = 'pinv' # 3.4 s
+#MODE = 'solve' # dense:1.56 s
+MODE = 'lsqr'  # dense:5.4 s
+#MODE = 'pinv'  # dense:3.4 s
 
 prms = {'g%d' % i: np.arange(SIZE) for i in range(NPRMS)}
 prm_list = list(prms.keys())
@@ -20,7 +20,7 @@ eqs = [('+c0*'.join(['%s'] * 5))  % tuple(random.sample(prm_list, 5))
 
 data = {eq: eval(eq, prms) for eq in eqs}
 
-ls = linsolve.LinearSolver(data, c0=prms['c0'])
+ls = linsolve.LinearSolver(data, c0=prms['c0'], sparse=False)
 t0 = time.time()
 sol = ls.solve(mode=MODE)
 t1 = time.time()
