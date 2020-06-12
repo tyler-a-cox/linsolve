@@ -21,11 +21,11 @@ setup_args = {
     'packages' : ['linsolve'],
     'version': version.version,
     'include_package_data': True,
-    'install_requires': ['numpy>=1.10', 'scipy'],
+    'install_requires': ['numpy>=1.14', 'scipy'],
     'classifiers': ['Development Status :: 5 - Production/Stable',
                     'Intended Audience :: Science/Research',
                     'License :: OSI Approved :: BSD License',
-                    'Programming Language :: Python :: 2.7',
+                    'Programming Language :: Python :: 3.6',
                     'Topic :: Scientific/Engineering :: Mathematics'],
     'keywords': 'linear equations optimal estimation',
 }
