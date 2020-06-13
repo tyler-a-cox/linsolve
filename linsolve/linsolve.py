@@ -27,7 +27,6 @@ form 'x*y + y*z'.
 For more detail on usage, see linsolve_example.ipynb
 '''
 
-from __future__ import absolute_import, division, print_function
 import numpy as np
 import ast
 from scipy.sparse import lil_matrix, csr_matrix
