@@ -35,27 +35,34 @@ import warnings
 from copy import deepcopy
 from functools import reduce
 
+# Monkey patch for backward compatibility:
+# ast.Num deprecated in Python 3.8. Make it an alias for ast.Constant
+# if it gets removed.
+if not hasattr(ast, 'Num'):
+    ast.Num = ast.Constant
+
 def ast_getterms(n):
     '''Convert an AST parse tree into a list of terms.  E.g. 'a*x1+b*x2' -> [[a,x1],[b,x2]]'''
-    if type(n) is ast.Name: return [[n.id]]
-    elif type(n) is ast.Constant: return [[n.n]]
-    elif type(n) is ast.Expression: return ast_getterms(n.body)
+    if type(n) is ast.Name:
+        return [[n.id]]
+    elif type(n) is ast.Constant or type(n) is ast.Num:
+        return [[n.n]]
+    elif type(n) is ast.Expression:
+        return ast_getterms(n.body)
     elif type(n) is ast.UnaryOp:
         assert(type(n.op) is ast.USub)
         return [[-1]+ast_getterms(n.operand)[0]]
     elif type(n) is ast.BinOp:
         if type(n.op) is ast.Mult:
             return [ast_getterms(n.left)[0] + ast_getterms(n.right)[0]]
-        elif type(n.op) is ast.Add: return ast_getterms(n.left) + ast_getterms(n.right)
-        elif type(n.op) is ast.Sub: return ast_getterms(n.left) + [[-1] + ast_getterms(n.right)[0]]
-        else: raise ValueError('Unsupported operation: %s' % str(n.op))
-
-    try:  # Backwards compatibility: ast.Num is used in python 3.7 but deprecated in python 3.8.
-        if type(n) is ast.Num: return [[n.n]]
-    except: # This will allow allow this check to fail gracefully when ast.Num is removed
-        pass
-
-    raise ValueError('Unsupported: %s' % str(n))
+        elif type(n.op) is ast.Add:
+            return ast_getterms(n.left) + ast_getterms(n.right)
+        elif type(n.op) is ast.Sub:
+            return ast_getterms(n.left) + [[-1] + ast_getterms(n.right)[0]]
+        else:
+            raise ValueError('Unsupported operation: %s' % str(n.op))
+    else:
+        raise ValueError('Unsupported: %s' % str(n))
 
 def get_name(s, isconj=False):
     '''Parse variable names of form 'var_' as 'var' + conjugation.'''
