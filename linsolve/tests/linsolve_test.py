@@ -1,4 +1,3 @@
-from __future__ import absolute_import, division, print_function
 import unittest
 import linsolve
 import numpy as np
