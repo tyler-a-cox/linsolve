@@ -1,3 +1,6 @@
+'''Benchmark a system of equations with a small number of independent
+parameters and a large number of parallel instances that allow the
+inverted A matrix to be reused.'''
 import linsolve
 import numpy as np
 import time, random

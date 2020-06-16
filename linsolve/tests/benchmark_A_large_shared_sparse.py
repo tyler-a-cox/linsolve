@@ -1,6 +1,7 @@
 '''Benchmark a system of equations with a large number of independent
 parameters and a modest number of parallel instances that allow the
-inverted A matrix to be reused.'''
+inverted A matrix to be reused. In this case, we test the speedup
+for using a sparse representation.'''
 import linsolve
 import numpy as np
 import time, random
@@ -10,7 +11,7 @@ np.random.seed(0)
 NPRMS = 2000
 NEQS = 5000
 SIZE = 100
-sparse = False # sparse: 1.30 s, dense: 1.50 s
+sparse = True # sparse: 1.30 s, dense: 1.50 s
 
 prms = {'g%d' % i: np.arange(SIZE) for i in range(NPRMS)}
 prm_list = list(prms.keys())

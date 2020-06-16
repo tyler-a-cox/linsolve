@@ -29,7 +29,7 @@ For more detail on usage, see linsolve_example.ipynb
 
 import numpy as np
 import ast
-from scipy.sparse import csr_matrix, csc_matrix
+from scipy.sparse import csc_matrix
 import scipy.sparse.linalg
 import scipy.linalg
 import warnings
@@ -243,7 +243,7 @@ class LinearSolver:
             wgts: Dictionary that maps equation strings from data to real weights to apply to each 
                 equation. Weights are treated as 1/sigma^2. All equations in the data must have a weight 
                 if wgts is not the default, {}, which means all 1.0s.
-            sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
+            sparse: Boolean (default False). If True, represents A matrix sparsely (though AtA, Aty end up dense)
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
                 are not to be solved for)
@@ -252,6 +252,7 @@ class LinearSolver:
             None
         """
         # XXX add ability to override datatype inference
+        # see https://github.com/HERA-Team/linsolve/issues/30
         self.data = data
         self.keys = list(data.keys())
         self.sparse = sparse
@@ -259,6 +260,7 @@ class LinearSolver:
         constants = kwargs.pop('constants', kwargs)
         self.eqs = [LinearEquation(k,wgts=self.wgts[k], constants=constants) for k in self.keys]
         # XXX add ability to have more than one measurment for a key=equation
+        # see https://github.com/HERA-Team/linsolve/issues/14
         self.prms = {}
         for eq in self.eqs: 
             self.prms.update(eq.prms)
@@ -360,12 +362,12 @@ class LinearSolver:
         performer, but for a fully-constrained system, 'solve' can be faster.  Also,
         there are a couple corner cases where lstsq is unstable but pinv works 
         for the same rcond. It seems particularly the case for single precision matrices.'''
-        # XXX look for https://github.com/numpy/numpy/issues/8720
-        # to add ability for lstsq to work on stacks of matrices
-        # (eliminating the slow 'for' loop).
+        # add ability for lstsq to work on stacks of matrices
+        # see https://github.com/HERA-Team/linsolve/issues/31
+
+        #x = [np.linalg.lstsq(A[...,k], y[...,k], rcond=rcond)[0] for k in range(y.shape[-1])]
         # np.linalg.lstsq uses lapack gelsd and is slower:
         # see https://stackoverflow.com/questions/55367024/fastest-way-of-solving-linear-least-squares
-        #x = [np.linalg.lstsq(A[...,k], y[...,k], rcond=rcond)[0] for k in range(y.shape[-1])]
         x = [scipy.linalg.lstsq(A[...,k], y[...,k],
                                 cond=rcond, lapack_driver='gelsy')[0]
                       for k in range(y.shape[-1])]
@@ -425,11 +427,14 @@ class LinearSolver:
         nprms = self._A_shape()[1]
         AtA = np.empty((y.shape[-1], nprms, nprms), dtype=self.dtype)
         Aty = np.empty((y.shape[-1], nprms), dtype=self.dtype)
+        # Compute AtA and Aty using sparse format used above.
+        # Speedup over scipy.sparse b/c y[x] and A[i][x] are arrays
         for i in range(AtA.shape[1]):
+            # 'i' is the column index, 'x' is the row index of A
             Aty[:,i] = sum([A[i][x].conj() * y[x] for x in A[i]])
             for j in range(i, AtA.shape[1]):
                 AtA[:,i,j] = sum([A[i][x].conj() * A[j][x]
-                    for x in A[i] if x in A[j]])
+                                  for x in A[i] if x in A[j]])
                 AtA[:,j,i] = AtA[:,i,j].conj() # explicitly hermitian
         return AtA, Aty
 
@@ -461,25 +466,28 @@ class LinearSolver:
         return np.linalg.solve(AtA, Aty).T
 
     def _invert_default(self, A, y, rcond):
-        '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
+        '''The default inverter, currently 'pinv'.'''
         # XXX doesn't deal w/ fact that individual matrices might
         # fail for one inversion method.
+        # see https://github.com/HERA-Team/linsolve/issues/32
+
         # XXX for now, lsqr is slower than pinv, but that may
         # change once numpy supports stacks of matrices
+        # see https://github.com/HERA-Team/linsolve/issues/31
         return self._invert_pinv(A, y, rcond)
 
     def _invert_default_sparse(self, xs_ys_vals, y, rcond):
-        '''Use the lsqr inverter, but if an LinAlgError is encountered, try using pinv.'''
+        '''The default sparse inverter, currently 'pinv'.'''
         return self._invert_pinv_sparse(xs_ys_vals, y, rcond)
 
-    def solve(self, rcond=None, mode='default', verbose=False):
+    def solve(self, rcond=None, mode='default'):
         """Compute x' = (At A)^-1 At * y, returning x' as dict of prms:values.
 
         Args:
             rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
                 Default: None (resolves to machine precision for inferred dtype)
-            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use. 
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use, unless all equations share the same A matrix, in which case pinv is always used`. 
                 'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
                 'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
                     the fastest solver.
@@ -490,7 +498,6 @@ class LinearSolver:
                 All of these modes are superceded if the same system of equations applies
                 to all datapoints in an array.  In this case, a inverse-based method is used so
                 that the inverted matrix can be re-used to solve all array indices.
-            verbose: print information about iterations
 
         Returns:
             sol: a dictionary of solutions with variables as keys
@@ -499,7 +506,6 @@ class LinearSolver:
         if rcond is None:
             rcond = np.finfo(self.dtype).resolution
         y = self.get_weighted_data()
-        Ashape = self._A_shape()
         if self.sparse:
             xs, ys, vals = self.get_A_sparse()
             if vals.shape[0] == 1 and y.shape[-1] > 1: # reuse inverse
@@ -512,6 +518,7 @@ class LinearSolver:
                 x = _invert((xs,ys,vals), y, rcond)
         else: 
             A = self.get_A()
+            Ashape = self._A_shape()
             assert(A.ndim == 3)
             if Ashape[-1] == 1 and y.shape[-1] > 1: # can reuse inverse
                 x = self._invert_pinv_shared(A[...,0], y, rcond)
@@ -560,6 +567,7 @@ class LinearSolver:
         
 
 # XXX need to add support for conjugated constants...maybe this already works because we have conjugated constants inherited from taylor expansion
+# see https://github.com/HERA-Team/linsolve/issues/12
 def conjterm(term, mode='amp'):
     '''Modify prefactor for conjugated terms, according to mode='amp|phs|real|imag'.'''
     f = {'amp':1,'phs':-1,'real':1,'imag':1j}[mode] # if KeyError, mode was invalid
@@ -584,7 +592,7 @@ class LogProductSolver:
             wgts: Dictionary that maps equation strings from data to real weights to apply to each 
                 equation. Weights are treated as 1/sigma^2. All equations in the data must have a weight 
                 if wgts is not the default, {}, which means all 1.0s.
-            sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
+            sparse: Boolean (default False). If True, represents A matrix sparsely (though AtA, Aty end up dense)
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
                 are not to be solved for)
@@ -612,19 +620,23 @@ class LogProductSolver:
             c = np.log(constants[k]) # log unwraps complex circle at -pi
             logamp_consts[k], logphs_consts[k] = c.real, c.imag
         self.ls_amp = LinearSolver(logamp, logampw, sparse=sparse, constants=logamp_consts)
-        if self.dtype in (np.complex64, np.complex128): # XXX worry about enumrating these explicitly
+        if self.dtype in (np.complex64, np.complex128):
+            # XXX worry about enumrating these here without
+            # explicitly ensuring that these are the support complex
+            # dtypes.
+            # see https://github.com/HERA-Team/linsolve/issues/33
             self.ls_phs = LinearSolver(logphs, logphsw, sparse=sparse, constants=logphs_consts)
         else:
             self.ls_phs = None # no phase term to solve for
 
-    def solve(self, rcond=None, mode='default', verbose=False):
+    def solve(self, rcond=None, mode='default'):
         """Solve both amplitude and phase by taking the log of both sides to linearize.
 
         Args:
             rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
                 Default: None (resolves to machine precision for inferred dtype)
-            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use. 
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use, unless all equations share the same A matrix, in which case pinv is always used`. 
                 'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
                 'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
                     the fastest solver.
@@ -635,16 +647,13 @@ class LogProductSolver:
                 All of these modes are superceded if the same system of equations applies
                 to all datapoints in an array.  In this case, a inverse-based method is used so
                 that the inverted matrix can be re-used to solve all array indices.
-            verbose: print information about iterations
 
         Returns:
             sol: a dictionary of complex solutions with variables as keys
         """
-        sol_amp = self.ls_amp.solve(rcond=rcond, mode=mode,
-                                    verbose=verbose)
+        sol_amp = self.ls_amp.solve(rcond=rcond, mode=mode)
         if self.ls_phs is not None:
-            sol_phs = self.ls_phs.solve(rcond=rcond, mode=mode,
-                                        verbose=verbose)
+            sol_phs = self.ls_phs.solve(rcond=rcond, mode=mode)
             sol = {k: np.exp(sol_amp[k] + 
                       np.complex64(1j) * sol_phs[k]).astype(self.dtype)
                       for k in sol_amp.keys()}
@@ -666,6 +675,7 @@ def taylor_expand(terms, consts={}, prepend='d'):
 
 
 # XXX make a version of linproductsolver that taylor expands in e^{a+bi} form
+# see https://github.com/HERA-Team/linsolve/issues/15
 class LinProductSolver:
 
     def __init__(self, data, sol0, wgts={}, sparse=False, **kwargs):
@@ -684,7 +694,7 @@ class LinProductSolver:
             wgts: Dictionary that maps equation strings from data to real weights to apply to each 
                 equation. Weights are treated as 1/sigma^2. All equations in the data must have a weight 
                 if wgts is not the default, {}, which means all 1.0s.
-            sparse: Boolean (default False). If True, handles all matrix algebra with sparse matrices. 
+            sparse: Boolean (default False). If True, represents A matrix sparsely (though AtA, Aty end up dense)
                 May be faster for certain systems of equations. 
             **kwargs: keyword arguments of constants (python variables in keys of data that 
                 are not to be solved for)
@@ -692,7 +702,9 @@ class LinProductSolver:
         Returns:
             None
         """
-        self.prepend = 'd' # XXX make this something hard to collide with
+        # XXX make this something hard to collide with
+        # see https://github.com/HERA-Team/linsolve/issues/17
+        self.prepend = 'd'
         self.data, self.sparse, self.keys = data, sparse, list(data.keys())
         self.wgts = verify_weights(wgts, self.keys)
         constants = kwargs.pop('constants', kwargs)
@@ -760,7 +772,7 @@ class LinProductSolver:
             ans0[k] = np.sum([eq.eval_consts(t) for t in taylor[:len(terms)]], axis=0)
         return ans0
 
-    def solve(self, rcond=None, mode='default', verbose=False):
+    def solve(self, rcond=None, mode='default'):
         '''Executes one iteration of a LinearSolver on the taylor-expanded system of 
         equations, improving sol0 to get sol.
 
@@ -768,7 +780,7 @@ class LinProductSolver:
             rcond: cutoff ratio for singular values useed in numpy.linalg.lstsq, numpy.linalg.pinv,
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
                 Default: None (resolves to machine precision for inferred dtype)
-            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use. 
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use, unless all equations share the same A matrix, in which case pinv is always used`. 
                 'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
                 'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
                     the fastest solver.
@@ -779,12 +791,11 @@ class LinProductSolver:
                 All of these modes are superceded if the same system of equations applies
                 to all datapoints in an array.  In this case, a inverse-based method is used so
                 that the inverted matrix can be re-used to solve all array indices.
-            verbose: print information about iterations
 
         Returns:
             sol: a dictionary of complex solutions with variables as keys
         '''
-        dsol = self.ls.solve(rcond=rcond, mode=mode, verbose=verbose)
+        dsol = self.ls.solve(rcond=rcond, mode=mode)
         sol = {}
         for dk in dsol:
             k = dk[len(self.prepend):]
@@ -818,7 +829,7 @@ class LinProductSolver:
                 divided by the L2-norm of the solution itself.
                 Default: None (resolves to machine precision for inferred dtype)
             maxiter: An integer maximum number of iterations to perform before quitting. Default 50.
-            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use. 
+            mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use, unless all equations share the same A matrix, in which case pinv is always used`. 
                 'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
                 'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
                     the fastest solver.
@@ -841,10 +852,11 @@ class LinProductSolver:
         if conv_crit is None:
             conv_crit = np.finfo(self.dtype).resolution
         for i in range(1,maxiter+1):
-            if verbose: print('Beginning iteration %d/%d' % (i,maxiter))
+            if verbose:
+                print('Beginning iteration %d/%d' % (i,maxiter))
             # rcond=conv_crit works because you can't get better precision than the accuracy of your inversion
             # and vice versa, there's no real point in inverting with greater precision than you are shooting for
-            new_sol = self.solve(rcond=conv_crit, verbose=verbose, mode=mode)
+            new_sol = self.solve(rcond=conv_crit, mode=mode)
             deltas = [new_sol[k]-self.sol0[k] for k in new_sol.keys()]
             conv = np.linalg.norm(deltas, axis=0) / np.linalg.norm(list(new_sol.values()),axis=0)
             if np.all(conv < conv_crit) or i == maxiter:
