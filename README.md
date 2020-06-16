@@ -89,7 +89,7 @@ dependencies. See below for manual management of dependencies.
 If you use `conda` and would like to ensure that dependencies are installed with `conda`
 rather than `pip`, you should execute::
 
-    $ conda install "numpy>=1.10" scipy
+    $ conda install "numpy>=1.14" scipy
 
 
 ## Development
