@@ -488,7 +488,7 @@ class LinearSolver:
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
                 Default: None (resolves to machine precision for inferred dtype)
             mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use, unless all equations share the same A matrix, in which case pinv is always used`. 
-                'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
+                'default': alias for 'pinv'.
                 'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
                     the fastest solver.
                 'solve': uses numpy.linalg.solve to do an inversion-less solve.  Fastest, 
@@ -637,7 +637,7 @@ class LogProductSolver:
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
                 Default: None (resolves to machine precision for inferred dtype)
             mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use, unless all equations share the same A matrix, in which case pinv is always used`. 
-                'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
+                'default': alias for 'pinv'.
                 'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
                     the fastest solver.
                 'solve': uses numpy.linalg.solve to do an inversion-less solve.  Fastest, 
@@ -781,7 +781,7 @@ class LinProductSolver:
                 or (if sparse) as atol and btol in scipy.sparse.linalg.lsqr
                 Default: None (resolves to machine precision for inferred dtype)
             mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use, unless all equations share the same A matrix, in which case pinv is always used`. 
-                'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
+                'default': alias for 'pinv'.
                 'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
                     the fastest solver.
                 'solve': uses numpy.linalg.solve to do an inversion-less solve.  Fastest, 
@@ -830,7 +830,7 @@ class LinProductSolver:
                 Default: None (resolves to machine precision for inferred dtype)
             maxiter: An integer maximum number of iterations to perform before quitting. Default 50.
             mode: 'default', 'lsqr', 'pinv', or 'solve', selects which inverter to use, unless all equations share the same A matrix, in which case pinv is always used`. 
-                'default': tries 'lsqr' but if a LinAlgError is encountered, backs off to try 'pinv'.
+                'default': alias for 'pinv'.
                 'lsqr': uses numpy.linalg.lstsq to do an inversion-less solve.  Usually 
                     the fastest solver.
                 'solve': uses numpy.linalg.solve to do an inversion-less solve.  Fastest, 
