@@ -27,7 +27,7 @@ jobs:
           miniconda-version: "latest"
           python-version: ${{ matrix.python-version }}
           environment-file: ci/test_environment.yml
-          activate-environment: hera_opm_tests
+          activate-environment: linsolve_tests
 
       - name: Conda Info
         run: |
@@ -40,7 +40,7 @@ jobs:
 
       - name: Run Tests
         run: |
-          pytest --cov=hera_opm --cov-report xml:coverage.xml
+          pytest --cov=linsolve --cov-report xml:coverage.xml
 
       - name: Upload Coverage
         uses: codecov/codecov-action@v1
