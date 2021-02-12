@@ -1,4 +1,4 @@
-name: linsolve
+name: linsolve_tests
 channels:
   - defaults
   - conda-forge
