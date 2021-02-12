@@ -90,17 +90,22 @@ class Constant:
             except:
                 self.dtype = type(self.val)
     def shape(self):
-        try: return self.val.shape
-        except(AttributeError): return ()
+        try:
+            return self.val.shape
+        except(AttributeError):
+            return ()
     def get_val(self, name=None):
         '''Return value of constant. Handles conj if name='varname_' is requested 
         instead of name='varname'.'''
         if name is not None and type(name) is str:
             name, conj = get_name(name, isconj=True)
             assert(self.name == name)
-            if conj: return self.val.conjugate()
-            else: return self.val
-        else: return self.val
+            if conj: 
+                return self.val.conjugate()
+            else: 
+                return self.val
+        else: 
+            return self.val
 
 
 class Parameter:
