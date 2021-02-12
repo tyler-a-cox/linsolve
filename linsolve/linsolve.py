@@ -229,17 +229,38 @@ def verify_weights(wgts, keys):
 def infer_dtype(values):
     '''Given a list of values, return the appropriate data 
     type for matrices, solutions.  
-    Returns float32, float64, complex64, or complex128'''
-    # determine the data type of all numpy arrays
-    types = [v.dtype for v in values if hasattr(v,'dtype')]
-    types = [t for t in types if type(t) is np.dtype]
+    Returns float32, float64, complex64, or complex128.
+    Python scalars will be treated float 32 or complex64 as appropriate.
+    Likewise, all int types will be treated as single precision floats.'''
+    
     # ensure we are at least a float32 if we were passed integers
-    types.append(np.float32(1).dtype)
-    # if any python constants are complex, promote to complex, but otherwise
-    # don't promote to double if we have floats/doubles/ints in python
-    py_types = [v.dtype if hasattr(v,'dtype') else type(v) for v in values]
-    if type(1j) in py_types: types.append(np.complex64(1).dtype)
-    dtype = reduce(np.promote_types, types)
+    types = set([np.float32(1).dtype])
+
+    # Loop through values, trying to infer data types
+    for v in values:
+        # If the object is a Constant, then use its value to assess data types
+        if isinstance(v, Constant):
+            v = v.val
+        
+        # If the object has the attribute dtype and an array can be made with that dtype, 
+        # and if its a float or complex, then use its dtype
+        try: 
+            t = np.array(v, dtype=v.dtype).dtype
+            if np.issubdtype(t, np.floating) or np.issubdtype(t, np.complexfloating):
+                types.add(t)
+        except(AttributeError, TypeError): 
+            pass
+        
+        # If casting the object to an array makes a complex array, ensure at least complex64
+        try:
+            if np.iscomplexobj(np.array(v)):
+                types.add(np.complex64)
+        except:
+            pass
+
+    # Use promote_types to figure out the floating/complex dtype that encompasses everything
+    dtype = reduce(np.promote_types, list(types))
+
     return dtype
 
 
