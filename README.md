@@ -1,7 +1,8 @@
 # linsolve
 
-[![Build Status](https://travis-ci.org/HERA-Team/linsolve.svg?branch=master)](https://travis-ci.org/HERA-Team/linsolve)
-[![Coverage Status](https://coveralls.io/repos/github/HERA-Team/linsolve/badge.svg?branch=master)](https://coveralls.io/github/HERA-Team/linsolve?branch=master)
+[![Run Tests](https://github.com/HERA-Team/linsolve/workflows/Run%20Tests/badge.svg)](https://github.com/HERA-Team/linsolve/actions)
+[![Code Coverage](https://codecov.io/gh/HERA-Team/linsolve/branch/master/graph/badge.svg?token=cFmFFBVHZP)](https://codecov.io/gh/HERA-Team/linsolve)
+
 
 `linsolve` is a module providing high-level tools for linearizing and solving systems of equations.
 
