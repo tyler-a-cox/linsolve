@@ -765,8 +765,10 @@ class LinProductSolver:
         for k in self.keys:
             tk = self.taylor_keys[k]
             dlin[tk] = self.data[k] #in theory, this will always be replaced with data - ans0 before use
-            try: wlin[tk] = self.wgts[k]
-            except(KeyError): pass
+            try: 
+                wlin[tk] = self.wgts[k]
+            except(KeyError):
+                pass
         self.ls = LinearSolver(dlin, wgts=wlin, sparse=self.sparse, constants=self.sols_kwargs)
         self.eq_dict = {eq.val: eq for eq in self.ls.eqs} #maps taylor string expressions to linear equations 
         #Now make sure every taylor equation has every relevant constant, even if they don't appear in the derivative terms.
