@@ -52,10 +52,10 @@ class TestLinSolve(unittest.TestCase):
         self.assertEqual(linsolve.infer_dtype([np.complex64(1),4.]), np.complex64)
         self.assertEqual(linsolve.infer_dtype([np.complex128(1),np.float64(4.)]), np.complex128)
         self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.float64(4.)]), np.complex128)
-        self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.int32(4.)]), np.complex128)
-        self.assertEqual(linsolve.infer_dtype([np.complex64(1),np.int64(4.)]), np.complex128)
     
 class TestLinearEquation(unittest.TestCase):
+        assert linsolve.infer_dtype([np.complex64(1),np.int32(4.)]) == np.complex64
+        assert linsolve.infer_dtype([np.complex64(1),np.int64(4.)]) == np.complex64
     def test_basics(self):
         le = linsolve.LinearEquation('x+y')
         self.assertEqual(le.terms, [['x'],['y']])
