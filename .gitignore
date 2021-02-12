@@ -5,3 +5,4 @@ dist/*
 *GIT_INFO
 *.coverage
 *.ipynb_checkpoints*
+coverage.xml

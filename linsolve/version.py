@@ -28,8 +28,8 @@ def construct_version_info():
 
     def unicode_to_str(u):
         if PY2:
-            return u.encode('utf8')
-        return u
+            return u.encode('utf8')  # pragma: no cover
+        return u  # pragma: no cover
 
     version_file = os.path.join(linsolve_dir, 'VERSION')
     version = open(version_file).read().strip()
@@ -80,4 +80,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main()  # pragma: no cover
