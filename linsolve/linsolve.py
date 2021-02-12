@@ -78,10 +78,17 @@ class Constant:
     '''Container for constants (which can be arrays) in linear equations.'''
     def __init__(self, name, constants):
         self.name = get_name(name)
-        if type(name) is str: self.val = constants[self.name]
-        else: self.val = name
-        try: self.dtype = self.val.dtype
-        except(AttributeError): self.dtype = type(self.val)
+        if type(name) is str: 
+            self.val = constants[self.name]
+        else: 
+            self.val = name
+        try: 
+            self.dtype = self.val.dtype
+        except(AttributeError): 
+            try: 
+                self.dtype = np.array(val).dtype
+            except:
+                self.dtype = type(self.val)
     def shape(self):
         try: return self.val.shape
         except(AttributeError): return ()
