@@ -1,8 +1,12 @@
 name: linsolve
 channels:
   - defaults
+  - conda-forge
 dependencies:
   - pytest
+  - pytest-runner
   - numpy>=1.14
   - pip
   - scipy
+- pip:
+      - pytest-cov
