@@ -8,5 +8,5 @@ dependencies:
   - numpy>=1.14
   - pip
   - scipy
-- pip:
+  - pip:
       - pytest-cov
