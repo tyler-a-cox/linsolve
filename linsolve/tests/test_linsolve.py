@@ -175,8 +175,8 @@ class TestLinearSolver():
 
     def test_solve_arrays(self):
         # range of 1 to 101 prevents "The exact solution is  x = 0" printouts
-        x = np.arange(1,101,dtype=np.float); x.shape = (10,10)
-        y = np.arange(1,101,dtype=np.float); y.shape = (10,10)
+        x = np.arange(1,101,dtype=np.float64); x.shape = (10,10)
+        y = np.arange(1,101,dtype=np.float64); y.shape = (10,10)
         eqs = ['2*x+y','-x+3*y']
         d,w = {}, {}
         for eq in eqs:
@@ -188,8 +188,8 @@ class TestLinearSolver():
 
     def test_solve_arrays_modes(self):
         # range of 1 to 101 prevents "The exact solution is  x = 0" printouts
-        x = np.arange(1,101,dtype=np.float); x.shape = (10,10)
-        y = np.arange(1,101,dtype=np.float); y.shape = (10,10)
+        x = np.arange(1,101,dtype=np.float64); x.shape = (10,10)
+        y = np.arange(1,101,dtype=np.float64); y.shape = (10,10)
         eqs = ['2*x+y','-x+3*y']
         d,w = {}, {}
         for eq in eqs:
@@ -215,8 +215,8 @@ class TestLinearSolver():
         for eq in eqs: d[eq],w[eq] = eval(eq), 1.
         ls = linsolve.LinearSolver(d,w,a=a,b=b, sparse=self.sparse)
         sol = ls.solve()
-        np.testing.assert_almost_equal(sol['x'], x*np.ones(3,dtype=np.float))
-        np.testing.assert_almost_equal(sol['y'], y*np.ones(3,dtype=np.float))
+        np.testing.assert_almost_equal(sol['x'], x*np.ones(3,dtype=np.float64))
+        np.testing.assert_almost_equal(sol['y'], y*np.ones(3,dtype=np.float64))
 
     def test_wgt_arrays(self):
         x,y = 1.,2.
@@ -227,8 +227,8 @@ class TestLinearSolver():
             d[eq],w[eq] = eval(eq), np.ones(4)
         ls = linsolve.LinearSolver(d,w,a=a,b=b, sparse=self.sparse)
         sol = ls.solve()
-        np.testing.assert_almost_equal(sol['x'], x*np.ones(4,dtype=np.float))
-        np.testing.assert_almost_equal(sol['y'], y*np.ones(4,dtype=np.float))
+        np.testing.assert_almost_equal(sol['x'], x*np.ones(4,dtype=np.float64))
+        np.testing.assert_almost_equal(sol['y'], y*np.ones(4,dtype=np.float64))
 
     def test_wgt_const_arrays(self):
         x,y = 1.,2.
@@ -239,8 +239,8 @@ class TestLinearSolver():
             d[eq],w[eq] = eval(eq)*np.ones(4), np.ones(4)
         ls = linsolve.LinearSolver(d,w,a=a,b=b, sparse=self.sparse)
         sol = ls.solve()
-        np.testing.assert_almost_equal(sol['x'], x*np.ones(4,dtype=np.float))
-        np.testing.assert_almost_equal(sol['y'], y*np.ones(4,dtype=np.float))
+        np.testing.assert_almost_equal(sol['x'], x*np.ones(4,dtype=np.float64))
+        np.testing.assert_almost_equal(sol['y'], y*np.ones(4,dtype=np.float64))
 
     def test_nonunity_wgts(self):
         x,y = 1.,2.
@@ -250,8 +250,8 @@ class TestLinearSolver():
         for eq in eqs: d[eq],w[eq] = eval(eq)*np.ones(4), 2*np.ones(4)
         ls = linsolve.LinearSolver(d,w,a=a,b=b, sparse=self.sparse)
         sol = ls.solve()
-        np.testing.assert_almost_equal(sol['x'], x*np.ones(4,dtype=np.float))
-        np.testing.assert_almost_equal(sol['y'], y*np.ones(4,dtype=np.float))
+        np.testing.assert_almost_equal(sol['x'], x*np.ones(4,dtype=np.float64))
+        np.testing.assert_almost_equal(sol['y'], y*np.ones(4,dtype=np.float64))
 
     def test_eval(self):
         x,y = 1.,2.
@@ -262,8 +262,8 @@ class TestLinearSolver():
             d[eq],w[eq] = eval(eq)*np.ones(4), np.ones(4)
         ls = linsolve.LinearSolver(d,w,a=a,b=b, sparse=self.sparse)
         sol = ls.solve()
-        np.testing.assert_almost_equal(sol['x'], x*np.ones(4,dtype=np.float))
-        np.testing.assert_almost_equal(sol['y'], y*np.ones(4,dtype=np.float))
+        np.testing.assert_almost_equal(sol['x'], x*np.ones(4,dtype=np.float64))
+        np.testing.assert_almost_equal(sol['y'], y*np.ones(4,dtype=np.float64))
         result = ls.eval(sol)
         for eq in d:
             np.testing.assert_almost_equal(d[eq], result[eq])
@@ -510,9 +510,9 @@ class TestLinProductSolver():
         np.testing.assert_almost_equal(y*z.conjugate(), d['y*z_'], 3)
 
     def test_complex_array_solve(self):
-        x = np.arange(30, dtype=np.complex); x.shape = (3,10)
-        y = np.arange(30, dtype=np.complex); y.shape = (3,10)
-        z = np.arange(30, dtype=np.complex); z.shape = (3,10)
+        x = np.arange(30, dtype=np.complex128); x.shape = (3,10)
+        y = np.arange(30, dtype=np.complex128); y.shape = (3,10)
+        z = np.arange(30, dtype=np.complex128); z.shape = (3,10)
         d,w = {'x*y':x*y, 'x*z':x*z, 'y*z':y*z}, {}
         for k in list(d.keys()): w[k] = np.ones(d[k].shape)
         sol0 = {}
@@ -525,9 +525,9 @@ class TestLinProductSolver():
         np.testing.assert_almost_equal(sol['z'], z, 2)
 
     def test_complex_array_NtimesNfreqs1_solve(self):
-        x = np.arange(1, dtype=np.complex); x.shape = (1,1)
-        y = np.arange(1, dtype=np.complex); y.shape = (1,1)
-        z = np.arange(1, dtype=np.complex); z.shape = (1,1)
+        x = np.arange(1, dtype=np.complex128); x.shape = (1,1)
+        y = np.arange(1, dtype=np.complex128); y.shape = (1,1)
+        z = np.arange(1, dtype=np.complex128); z.shape = (1,1)
         d,w = {'x*y':x*y, 'x*z':x*z, 'y*z':y*z}, {}
         for k in list(d.keys()): w[k] = np.ones(d[k].shape)
         sol0 = {}
