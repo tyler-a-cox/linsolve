@@ -6,4 +6,4 @@ dist/*
 *.coverage
 *.ipynb_checkpoints*
 coverage.xml
-linsolve/tests/.DS_Store
+*.DS_Store
