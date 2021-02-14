@@ -85,10 +85,7 @@ class Constant:
         try: 
             self.dtype = self.val.dtype
         except(AttributeError): 
-            try: 
-                self.dtype = np.array(val).dtype
-            except:
-                self.dtype = type(self.val)
+            self.dtype = type(self.val)
     def shape(self):
         try:
             return self.val.shape
@@ -227,7 +224,7 @@ def verify_weights(wgts, keys):
         return wgts
 
 def infer_dtype(values):
-    '''Given a list of values, return the appropriate data 
+    '''Given a list of values, return the appropriate numpy data 
     type for matrices, solutions.  
     Returns float32, float64, complex64, or complex128.
     Python scalars will be treated float 32 or complex64 as appropriate.
@@ -237,23 +234,24 @@ def infer_dtype(values):
     types = set([np.float32(1).dtype])
 
     # Loop through values, trying to infer data types
-    for v in values:
-        # If the object is a Constant, then use its value to assess data types
-        if isinstance(v, Constant):
-            v = v.val
+    for val in values:
+        # Figure out the type of the value
+        if hasattr(val, 'dtype'):
+            this_type = val.dtype
+        else:
+            this_type = type(val)
         
-        # If the object has the attribute dtype and an array can be made with that dtype, 
-        # and if its a float or complex, then use its dtype
+        # Figure out if the type is a floating or complex numpy type
         try: 
-            t = np.array(v, dtype=v.dtype).dtype
-            if np.issubdtype(t, np.floating) or np.issubdtype(t, np.complexfloating):
-                types.add(t)
-        except(AttributeError, TypeError): 
+            if issubclass(type(this_type), np.dtype):
+                if np.issubdtype(this_type, np.floating) or np.issubdtype(this_type, np.complexfloating):
+                    types.add(this_type)
+        except TypeError:
             pass
-        
-        # If casting the object to an array makes a complex array, ensure at least complex64
+
+        # If the val is complex (or it's a Constant and its .val is complex), ensure at least complex64 is included
         try:
-            if np.iscomplexobj(np.array(v)):
+            if np.iscomplexobj(val) or (issubclass(type(val), Constant) and np.iscomplexobj(val.val)):
                 types.add(np.complex64)
         except:
             pass
