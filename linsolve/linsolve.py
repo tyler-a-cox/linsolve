@@ -234,7 +234,7 @@ def infer_dtype(values):
     Likewise, all int types will be treated as single precision floats.'''
     
     # ensure we are at least a float32 if we were passed integers
-    types = set([np.float32(1).dtype])
+    types = set([np.dtype('float32')])
 
     # Loop through values, trying to infer data types
     for v in values:
