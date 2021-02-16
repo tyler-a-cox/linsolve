@@ -238,7 +238,7 @@ def infer_dtype(values):
         # Figure out the type of the value
         try:
             this_type = val.dtype
-        except:
+        except AttributeError:
             this_type = type(val)
         
         # Figure out if the type is a floating or complex numpy type
