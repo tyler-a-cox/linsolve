@@ -78,22 +78,31 @@ class Constant:
     '''Container for constants (which can be arrays) in linear equations.'''
     def __init__(self, name, constants):
         self.name = get_name(name)
-        if type(name) is str: self.val = constants[self.name]
-        else: self.val = name
-        try: self.dtype = self.val.dtype
-        except(AttributeError): self.dtype = type(self.val)
+        if type(name) is str: 
+            self.val = constants[self.name]
+        else: 
+            self.val = name
+        try: 
+            self.dtype = self.val.dtype
+        except(AttributeError): 
+            self.dtype = type(self.val)
     def shape(self):
-        try: return self.val.shape
-        except(AttributeError): return ()
+        try:
+            return self.val.shape
+        except(AttributeError):
+            return ()
     def get_val(self, name=None):
         '''Return value of constant. Handles conj if name='varname_' is requested 
         instead of name='varname'.'''
         if name is not None and type(name) is str:
             name, conj = get_name(name, isconj=True)
             assert(self.name == name)
-            if conj: return self.val.conjugate()
-            else: return self.val
-        else: return self.val
+            if conj: 
+                return self.val.conjugate()
+            else: 
+                return self.val
+        else: 
+            return self.val
 
 
 class Parameter:
@@ -215,19 +224,35 @@ def verify_weights(wgts, keys):
         return wgts
 
 def infer_dtype(values):
-    '''Given a list of values, return the appropriate data 
+    '''Given a list of values, return the appropriate numpy data 
     type for matrices, solutions.  
-    Returns float32, float64, complex64, or complex128'''
-    # determine the data type of all numpy arrays
-    types = [v.dtype for v in values if hasattr(v,'dtype')]
-    types = [t for t in types if type(t) is np.dtype]
+    Returns float32, float64, complex64, or complex128.
+    Python scalars will be treated float 32 or complex64 as appropriate.
+    Likewise, all int types will be treated as single precision floats.'''
+    
     # ensure we are at least a float32 if we were passed integers
-    types.append(np.float32(1).dtype)
-    # if any python constants are complex, promote to complex, but otherwise
-    # don't promote to double if we have floats/doubles/ints in python
-    py_types = [v.dtype if hasattr(v,'dtype') else type(v) for v in values]
-    if type(1j) in py_types: types.append(np.complex64(1).dtype)
-    dtype = reduce(np.promote_types, types)
+    types = set([np.float32(1).dtype])
+
+    # Loop through values, trying to infer data types
+    for val in values:
+        # Figure out the type of the value
+        try:
+            this_type = val.dtype
+        except AttributeError:
+            this_type = type(val)
+        
+        # Figure out if the type is a floating or complex numpy type
+        if issubclass(type(this_type), np.dtype):
+            if np.issubdtype(this_type, np.floating) or np.issubdtype(this_type, np.complexfloating):
+                types.add(this_type)
+
+        # If the val is complex (or it's a Constant and its .val is complex), ensure at least complex64 is included
+        if np.iscomplexobj(val) or (issubclass(type(val), Constant) and np.iscomplexobj(val.val)):
+            types.add(np.complex64)
+
+    # Use promote_types to figure out the floating/complex dtype that encompasses everything
+    dtype = reduce(np.promote_types, list(types))
+
     return dtype
 
 
@@ -732,8 +757,10 @@ class LinProductSolver:
         for k in self.keys:
             tk = self.taylor_keys[k]
             dlin[tk] = self.data[k] #in theory, this will always be replaced with data - ans0 before use
-            try: wlin[tk] = self.wgts[k]
-            except(KeyError): pass
+            try: 
+                wlin[tk] = self.wgts[k]
+            except(KeyError):
+                pass
         self.ls = LinearSolver(dlin, wgts=wlin, sparse=self.sparse, constants=self.sols_kwargs)
         self.eq_dict = {eq.val: eq for eq in self.ls.eqs} #maps taylor string expressions to linear equations 
         #Now make sure every taylor equation has every relevant constant, even if they don't appear in the derivative terms.

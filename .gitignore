@@ -6,3 +6,4 @@ dist/*
 *.coverage
 *.ipynb_checkpoints*
 coverage.xml
+*.DS_Store
