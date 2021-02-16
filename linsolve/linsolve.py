@@ -236,25 +236,19 @@ def infer_dtype(values):
     # Loop through values, trying to infer data types
     for val in values:
         # Figure out the type of the value
-        if hasattr(val, 'dtype'):
+        try:
             this_type = val.dtype
-        else:
+        except:
             this_type = type(val)
         
         # Figure out if the type is a floating or complex numpy type
-        try: 
-            if issubclass(type(this_type), np.dtype):
-                if np.issubdtype(this_type, np.floating) or np.issubdtype(this_type, np.complexfloating):
-                    types.add(this_type)
-        except TypeError:
-            pass
+        if issubclass(type(this_type), np.dtype):
+            if np.issubdtype(this_type, np.floating) or np.issubdtype(this_type, np.complexfloating):
+                types.add(this_type)
 
         # If the val is complex (or it's a Constant and its .val is complex), ensure at least complex64 is included
-        try:
-            if np.iscomplexobj(val) or (issubclass(type(val), Constant) and np.iscomplexobj(val.val)):
-                types.add(np.complex64)
-        except:
-            pass
+        if np.iscomplexobj(val) or (issubclass(type(val), Constant) and np.iscomplexobj(val.val)):
+            types.add(np.complex64)
 
     # Use promote_types to figure out the floating/complex dtype that encompasses everything
     dtype = reduce(np.promote_types, list(types))
