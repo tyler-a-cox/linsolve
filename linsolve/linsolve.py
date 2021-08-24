@@ -231,30 +231,23 @@ def infer_dtype(values):
     Likewise, all int types will be treated as single precision floats.'''
     
     # ensure we are at least a float32 if we were passed integers
-    types = set([np.float32(1).dtype])
-
-    # Loop through values, trying to infer data types
-    for val in values:
-        # Figure out the type of the value
-        try:
-            this_type = val.dtype
-        except AttributeError:
-            this_type = type(val)
-        
-        # Figure out if the type is a floating or complex numpy type
-        if issubclass(type(this_type), np.dtype):
-            if np.issubdtype(this_type, np.floating) or np.issubdtype(this_type, np.complexfloating):
-                types.add(this_type)
-
-        # If the val is complex (or it's a Constant and its .val is complex), ensure at least complex64 is included
-        if np.iscomplexobj(val) or (issubclass(type(val), Constant) and np.iscomplexobj(val.val)):
-            types.add(np.complex64)
-
-    # Use promote_types to figure out the floating/complex dtype that encompasses everything
-    dtype = reduce(np.promote_types, list(types))
-
+    types = [np.dtype('float32')]
+    # determine the data type of all values
+    all_types = list(set([v.dtype if hasattr(v,'dtype') else type(v)
+                        for v in values]))
+    # split types into numpy vs. python dtypes
+    py_types = [t for t in all_types if not isinstance(t, np.dtype)]
+    np_types = [t for t in all_types if isinstance(t, np.dtype)]
+    # only use numpy dtypes that are floating/complex
+    types += [t for t in np_types if np.issubdtype(t, np.floating) 
+                                  or np.issubdtype(t, np.complexfloating)]
+    # if any python constants are complex, promote to complex, but otherwise
+    # don't promote to double if we have floats/doubles/ints in python
+    if complex in py_types:
+        types.append(np.dtype('complex64'))
+    # Use promote_types to determine the final floating/complex dtype
+    dtype = reduce(np.promote_types, types)
     return dtype
-
 
 class LinearSolver:
 
