@@ -671,15 +671,6 @@ class LinearSolver:
             sol.update(p.get_sol(x, self.prm_order))
         return sol
 
-    def _get_A_sparse(self):
-        """Fixes dimension needed for CSR sparse matrix representation."""
-        xs, ys, vals = self.sparse_form()
-        ones = np.ones(self._A_shape()[2:], dtype=self.dtype)
-        for n, val in enumerate(vals):
-            if not isinstance(val, np.ndarray) or val.size == 1:
-                vals[n] = ones * val
-        return np.array(xs), np.array(ys), np.array(vals, dtype=self.dtype).T
-
     def eval(self, sol, keys=None):
         """Returns a dictionary evaluating data keys to the current values given sol and consts.
         Uses the stored data object unless otherwise specified."""
