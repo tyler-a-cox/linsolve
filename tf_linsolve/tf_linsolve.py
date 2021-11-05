@@ -403,7 +403,7 @@ class LinearSolver:
             vals += val
         return xs, ys, vals
 
-    def get_A_sparse(self):
+    def _get_A_sparse(self):
         """Fixes dimension needed for CSR sparse matrix representation."""
         xs, ys, vals = self.sparse_form()
         ones = np.ones(self._A_shape()[2:], dtype=self.dtype)
