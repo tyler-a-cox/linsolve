@@ -3,7 +3,7 @@ import sys
 import os.path as op
 import json
 
-sys.path.append("linsolve")
+sys.path.append("tf_linsolve")
 import version
 
 data = [
@@ -12,17 +12,17 @@ data = [
     version.git_description,
     version.git_branch,
 ]
-with open(op.join("linsolve", "GIT_INFO"), "w") as outfile:
+with open(op.join("tf_linsolve", "GIT_INFO"), "w") as outfile:
     json.dump(data, outfile)
 
 setup_args = {
-    "name": "linsolve",
+    "name": "tf_linsolve",
     "author": "HERA Team",
-    "url": "https://github.com/HERA-Team/linsolve",
+    "url": "https://github.com/tyler-a-cox/linsolve",
     "license": "BSD",
     "description": "high-level tools for linearizing and solving systems of equations",
-    "package_dir": {"linsolve": "linsolve"},
-    "packages": ["linsolve"],
+    "package_dir": {"tf_linsolve": "tf_linsolve"},
+    "packages": ["tf_linsolve"],
     "version": version.version,
     "include_package_data": True,
     "install_requires": ["numpy>=1.14", "scipy", "tensorflow>=2.4.0"],
