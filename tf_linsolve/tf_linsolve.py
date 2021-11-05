@@ -447,9 +447,14 @@ class LinearSolver:
             rcond must be set to 0 to work for complex datasets
         """
         dtype = y.dtype
+
+        """
         assert not (
-            dtype in [np.complex128, np.complex64, complex] and rcond > 0
-        ), "If using complex data, rcond must be equal to 0 for performance reasons"
+            dtype in [np.complex128] and rcond > 0
+        ), "If using complex128 data, rcond must be equal to 0 for performance reasons"
+        """
+        if dtype in [np.complex128]:
+            rcond = 0
 
         x = tf.linalg.lstsq(
             tf.transpose(A, perm=[2, 0, 1]),
@@ -457,6 +462,37 @@ class LinearSolver:
             l2_regularizer=rcond,
         )[..., 0]
         return x
+
+    def _invert_lsqr_stable(self, A, y, rcond=0, sparse=False):
+        """
+
+        rcond:
+            rcond must be set to 0 to work for complex datasets
+        """
+        dtype = y.dtype
+
+        if dtype in [np.complex128]:
+            # A = tf.cast(A, dtype='complex64')
+            # A = tf.cast(A, dtype='complex64')
+            rcond = 0
+
+        x = tf.linalg.lstsq(
+            tf.transpose(A, perm=[2, 0, 1]),
+            tf.transpose(y)[..., None],
+            l2_regularizer=rcond,
+            fast=False,
+        )[..., 0]
+        return x
+
+    def _invert_lsqr_stable_sparse(self, A, y, rcond):
+        """
+
+        rcond:
+            rcond must be set to 0 to work for complex datasets
+        """
+        A = self._get_A_sparse(xs_ys_vals)
+        A = tf.convert_to_tensor(A)
+        return self._invert_lsqr_stable(A, y, rcond, sparse=True)
 
     def _invert_lsqr_sparse(self, xs_ys_vals, y, rcond):
         """
@@ -586,7 +622,7 @@ class LinearSolver:
         Returns:
             sol: a dictionary of solutions with variables as keys
         """
-        assert mode in ["default", "lsqr", "pinv", "solve"]
+        assert mode in ["default", "lsqr", "lsqr_stable", "pinv", "solve"]
         if rcond is None:
             rcond = np.finfo(self.dtype).resolution
         y = self.get_weighted_data()
@@ -600,6 +636,8 @@ class LinearSolver:
                     _invert = self._invert_default_sparse
                 elif mode == "lsqr":
                     _invert = self._invert_lsqr_sparse
+                elif mode == "lsqr_stable":
+                    _invert = self._invert_lsqr_stable_sparse
                 elif mode == "pinv":
                     _invert = self._invert_pinv_sparse
                 elif mode == "solve":
@@ -617,6 +655,8 @@ class LinearSolver:
                     _invert = self._invert_default
                 elif mode == "lsqr":
                     _invert = self._invert_lsqr
+                elif mode == "lsqr_stable":
+                    _invert = self._invert_lsqr_stable
                 elif mode == "pinv":
                     _invert = self._invert_pinv
                 elif mode == "solve":
