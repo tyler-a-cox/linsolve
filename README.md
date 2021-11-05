@@ -21,7 +21,7 @@ See [linsolve_example.ipynb](linsolve_example.ipynb) for a tutorial on how to us
 Below we give a brief example on the general usage of `LinearSolver`.
 
 Assume we have a linear system of equations, with a data vector `y` containing measurements
-and a model vector `b` containing parameters we would like to solve for. Let's simplify to 
+and a model vector `b` containing parameters we would like to solve for. Let's simplify to
 the problem of fitting a line to three data points, which amounts to solving for a slope and an offset.
 In this case, our linear system of equations can be written as
 
@@ -82,7 +82,7 @@ issue log after verifying that the issue does not already exist.
 Comments on existing issues are also welcome.
 
 # Installation
-Preferred method of installation is `pip install .` 
+Preferred method of installation is `pip install .`
 (or `pip install git+https://github.com/HERA-Team/linsolve`). This will install all
 dependencies. See below for manual management of dependencies.
 
@@ -101,10 +101,23 @@ If you are developing `linsolve`, it is recommended to create a fresh environmen
     $ conda create -n linsolve python=3
     $ conda activate linsolve
     $ conda env update -n linsolve -f environment.yml
-    $ pip install -e . 
-    
-This will install extra dependencies required for testing/development as well as the 
+    $ pip install -e .
+
+This will install extra dependencies required for testing/development as well as the
 standard ones.
 
 To run tests, just run `nosetests` in the top-level directory.
 
+# Places for Improvement
+
+- This has not been tested on LinProductSolver or LogProductSolver yet
+  - Improvements could be made by modifying which values are tensors and which are arrays
+  - We could also use tensorflow graphs, but doing so would require likely only improve
+    the runtime if called multiple times since it takes time to build the graph
+- There are unnecessary matrix transposes that could be removed if we modify the structure
+  of the A matrix. This likely would not decrease the run by much but could help in the case
+  of large A matrices
+- Tensorflow does not have a psuedo-inverse implementation for complex numbers. One
+  has been implemented in the meantime, but is likely suboptimal. Improvements in speed could
+  be made there
+- This code is not explicitly optimized to run on multiple GPUs.
