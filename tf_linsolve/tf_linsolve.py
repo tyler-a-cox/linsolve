@@ -628,7 +628,7 @@ class LinearSolver:
         y = self.get_weighted_data()
         y = tf.convert_to_tensor(y)
         if self.sparse:
-            xs, ys, vals = self.get_A_sparse()
+            xs, ys, vals = self._get_A_sparse()
             if vals.shape[0] == 1 and y.shape[-1] > 1:  # reuse inverse
                 x = self._invert_pinv_shared_sparse((xs, ys, vals), y, rcond)
             else:  # we can't reuse inverses
@@ -671,7 +671,7 @@ class LinearSolver:
             sol.update(p.get_sol(x, self.prm_order))
         return sol
 
-    def get_A_sparse(self):
+    def _get_A_sparse(self):
         """Fixes dimension needed for CSR sparse matrix representation."""
         xs, ys, vals = self.sparse_form()
         ones = np.ones(self._A_shape()[2:], dtype=self.dtype)
