@@ -103,7 +103,7 @@ def fft_dly_tensor(
         / tf.reduce_sum(tf.gather(wgts, fSlice, axis=-1), axis=2, keepdims=True)
     )
 
-    return dlys, offset
+    return dlys.numpy(), offset.numpy()
 
 
 def interp_peak_tensor(data, method="quinn", reject_edges=False):
