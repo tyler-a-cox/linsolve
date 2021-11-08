@@ -7,6 +7,9 @@ from copy import deepcopy
 import argparse
 import os
 
+import tensorflow as tf
+import tensorflow_addons as tfa
+
 # import tf_linsolve as linsolve
 import linsolve
 
@@ -31,6 +34,162 @@ from hera_cal.apply_cal import calibrate_in_place
 
 SEC_PER_DAY = 86400.0
 IDEALIZED_BL_TOL = 1e-8  # bl_error_tol for redcal.get_reds when using antenna positions calculated from reds
+
+
+def fft_dly_tensor(
+    data, df, wgts=None, f0=0.0, medfilt=False, kernel=(1, 11), edge_cut=0
+):
+    """Get delay of visibility across band using FFT and Quinn's Second Method to fit the delay and phase offset.
+    Arguments:
+        data : ndarray of complex data (e.g. gains or visibilities) of shape (Ntimes, Nfreqs)
+        df : frequency channel width in Hz
+        wgts : multiplicative wgts of the same shape as the data
+        f0 : float lowest frequency channel. Optional parameter used in getting the offset correct.
+        medfilt : boolean, median filter data before fft
+        kernel : size of median filter kernel along (time, freq) axes
+        edge_cut : int, number of channels to exclude at each band edge of data in FFT window
+    Returns:
+        dlys : (Ntimes, 1) ndarray containing delay for each integration
+        offset : (Ntimes, 1) ndarray containing estimated frequency-independent phases
+    """
+    # setup
+    data = tf.convert_to_tensor(data)
+    Nbls, Ntimes, Nfreqs = data.shape
+    if wgts is None:
+        wgts = tf.ones_like(data, dtype=data.dtype)
+
+    # smooth via median filter
+    if medfilt:
+        data = copy.deepcopy(data)  # this prevents filtering of the original input data
+        data.real = tfa.image.median_filter2d(data.real, filter_shape=kernel)
+        data.imag = tfa.image.median_filter2d(data.imag, filter_shape=kernel)
+
+    # fft w/ wgts
+    dw = tf.multiply(data, wgts)
+
+    # This does not work with tensorflow yet
+    if edge_cut > 0:
+        assert 2 * edge_cut < Nfreqs - 1, "edge_cut cannot be >= Nfreqs/2 - 1"
+        dw = dw[:, :, edge_cut : (-edge_cut + 1)]
+
+    dw = tf.where(tf.math.is_nan(tf.math.real(dw)), 0, dw)
+    fftfreqs = np.fft.fftfreq(dw.shape[2], df)
+    dtau = fftfreqs[1] - fftfreqs[0]
+    vfft = tf.signal.fft(dw)
+
+    # get interpolated peak and indices
+    inds, bin_shifts, peaks, interp_peaks = interp_peak_tensor(vfft)
+    dlys = tf.reshape(
+        fftfreqs[inds] + bin_shifts * dtau, (data.shape[0], data.shape[1], 1)
+    )
+
+    # Now that we know the slope, estimate the remaining phase offset
+    freqs = np.arange(Nfreqs, dtype="float32") * df + f0
+    fSlice = range(edge_cut, len(freqs) - edge_cut)
+    offset = tf.math.angle(
+        tf.reduce_sum(
+            tf.gather(wgts, fSlice, axis=-1)
+            * tf.gather(data, fSlice, axis=-1)
+            * tf.exp(
+                tf.complex(0.0, -2 * np.pi)
+                * tf.cast(dlys, dtype=tf.complex64)
+                * tf.cast(
+                    tf.reshape(tf.gather(freqs, fSlice), (1, -1)), dtype=tf.complex64
+                )
+            ),
+            axis=2,
+            keepdims=True,
+        )
+        / tf.reduce_sum(tf.gather(wgts, fSlice, axis=-1), axis=2, keepdims=True)
+    )
+
+    return dlys, offset
+
+
+def interp_peak_tensor(data, method="quinn", reject_edges=False):
+    """
+    Spectral interpolation for finding peak and amplitude of data along last axis.
+
+    Args:
+        data : complex 2d ndarray in Fourier space.
+            If fed as 1d array will reshape into [1, N] array.
+            Quinn's method usually operates on complex data (eg. fft'ed data) while the
+            quadratic method operates on real-valued data (generally absolute values).
+        method : either 'quinn' (see https://ieeexplore.ieee.org/document/558515) or 'quadratic'
+            (see https://ccrma.stanford.edu/~jos/sasp/Quadratic_Interpolation_Spectral_Peaks.html).
+        reject_edges : bool, if True, reject solution if it isn't a true "peak", in other words
+            if it is along the axis edges
+
+    Returns:
+        indices : index array holding argmax of data along last axis
+        bin_shifts : estimated peak bin shift value [-1, 1] from indices
+        peaks : argmax of data corresponding to indices
+        new_peaks : estimated peak value at indices + bin_shifts
+    """
+    Nbls, N1, N2 = data.shape
+
+    # get abs
+    dabs = tf.abs(data)
+
+    # get argmaxes along last axis
+    if method == "quinn":
+        indices = tf.argmax(dabs, axis=-1)
+    elif method == "quadratic":
+        indices = tf.argmax(dabs, axis=-1)
+    else:
+        raise ValueError(
+            "'{}' is not a recognized peak interpolation method.".format(method)
+        )
+
+    peaks = tf.gather(data, indices, axis=-1, batch_dims=2)
+
+    # calculate shifted peak for sub-bin resolution
+    ind = indices - 1
+    ind = tf.where(ind < 0, N2 - 1, ind)
+    k0 = tf.gather(data, ind, axis=-1, batch_dims=2)
+    k1 = tf.gather(data, indices, axis=-1, batch_dims=2)
+    k2 = tf.gather(data, (indices + 1) % N2, axis=-1, batch_dims=2)
+
+    if method == "quinn":
+
+        def tau(x):
+            t = 0.25 * tf.math.log(3 * x ** 2 + 6 * x + 1)
+            t -= (
+                6 ** 0.5
+                / 24
+                * tf.math.log(
+                    (x + 1 - (2.0 / 3.0) ** 0.5) / (x + 1 + (2.0 / 3.0) ** 0.5)
+                )
+            )
+            return t
+
+        alpha1 = tf.math.real(k0 / k1)
+        alpha2 = tf.math.real(k2 / k1)
+        delta1 = alpha1 / (1 - alpha1)
+        delta2 = -alpha2 / (1 - alpha2)
+        d = (delta1 + delta2) / 2 + tau(delta1 ** 2) - tau(delta2 ** 2)
+        d = tf.where(tf.math.is_inf(tf.math.real(d)), 0.0, d)
+        d = tf.cast(d, dtype=tf.complex64)
+
+        ck = tf.convert_to_tensor(
+            [
+                tf.math.divide_no_nan(
+                    tf.exp(2.0j * np.float32(np.pi) * d) - 1, 2.0j * np.pi * (d - k)
+                )
+                for k in [-1, 0, 1]
+            ]
+        )
+        rho = tf.abs(k0 * ck[0] + k1 * ck[1] + k2 * ck[2]) / tf.abs(
+            tf.reduce_sum(ck ** 2, axis=(0))
+        )
+        rho = tf.where(tf.math.real(tf.abs(d)) == 0, tf.math.real(k1), rho)
+        return indices, d, tf.abs(peaks), rho
+
+    elif method == "quadratic":
+        denom = k0 - 2 * k1 + k2
+        bin_shifts = 0.5 * tf.math.divide_no_nan((k0 - k2), denom)
+        new_peaks = k1 - 0.25 * (k0 - k2) * bin_shifts
+        return indices, bin_shifts, peaks, new_peaks
 
 
 def fft_dly_new(
@@ -1164,6 +1323,7 @@ class RedundantCalibrator:
         norm=True,
         medfilt=False,
         kernel=(1, 1, 11),
+        use_tensorflow=False,
     ):
         """
         """
@@ -1190,15 +1350,26 @@ class RedundantCalibrator:
                 wc.append(w12)
 
             if len(list(pairs)) >= 1:
-                taus = fft_dly_new(
-                    np.array(dc),
-                    df,
-                    f0=f0,
-                    wgts=np.array(wc),
-                    medfilt=medfilt,
-                    kernel=kernel,
-                    edge_cut=edge_cut,
-                )
+                if use_tensorflow:
+                    taus = fft_dly_tensor(
+                        np.array(dc),
+                        df,
+                        f0=f0,
+                        wgts=np.array(wc),
+                        medfilt=medfilt,
+                        kernel=kernel,
+                        edge_cut=edge_cut,
+                    )
+                else:
+                    taus = fft_dly_new(
+                        np.array(dc),
+                        df,
+                        f0=f0,
+                        wgts=np.array(wc),
+                        medfilt=medfilt,
+                        kernel=kernel,
+                        edge_cut=edge_cut,
+                    )
                 tauwgts = np.sum(wc, axis=(1, 2))
                 for bi, (bl1, bl2) in enumerate(pairs):
                     taus_offs[(bl1, bl2)] = (taus[0][bi], taus[1][bi])
