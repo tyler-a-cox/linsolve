@@ -458,10 +458,10 @@ class LinearSolver:
 
         x = tf.linalg.lstsq(
             tf.transpose(A, perm=[2, 0, 1]),
-            tf.transpose(y)[..., None],
+            tf.expand_dims(tf.transpose(y), axis=-1),
             l2_regularizer=rcond,
-        )[..., 0]
-        return x
+        )
+        return tf.squeeze(x)
 
     def _invert_lsqr_stable(self, A, y, rcond=0, sparse=False):
         """
@@ -478,11 +478,11 @@ class LinearSolver:
 
         x = tf.linalg.lstsq(
             tf.transpose(A, perm=[2, 0, 1]),
-            tf.transpose(y)[..., None],
+            tf.expand_dims(tf.transpose(y), axis=-1),
             l2_regularizer=rcond,
             fast=False,
-        )[..., 0]
-        return x
+        )
+        return tf.squeeze(x)
 
     def _invert_lsqr_stable_sparse(self, A, y, rcond):
         """
@@ -522,9 +522,11 @@ class LinearSolver:
         else:
             AtAi = tf.linalg.pinv(AtA, rcond=rcond)
 
-        return tf.einsum(
-            "nij,njk,kn->ni", AtAi, tf.transpose(A, perm=[0, 2, 1], conjugate=True), y
-        )
+        # I probably don't need to expand_dims or transpose here
+        y = tf.expand_dims(tf.transpose(y), axis=-1)
+        Aty = tf.matmul(A, y, adjoint_a=True)
+        x = tf.squeeze(tf.matmul(AtAi, Aty))
+        return x
 
     def _invert_pinv_sparse(self, xs_ys_vals, y, rcond):
         """
@@ -540,12 +542,10 @@ class LinearSolver:
         """
         A = tf.transpose(A, perm=[2, 0, 1])
         AtA = tf.matmul(A, A, adjoint_a=True, a_is_sparse=sparse, b_is_sparse=sparse)
-        Aty = tf.matmul(
-            tf.transpose(A, perm=[0, 2, 1], conjugate=True),
-            tf.transpose(y)[..., None],
-            a_is_sparse=sparse,
-        )
-        return tf.linalg.solve(AtA, Aty)[..., 0]
+        y = tf.expand_dims(tf.transpose(y), axis=-1)
+        Aty = tf.matmul(A, y, adjoint_a=True, a_is_sparse=sparse,)
+        x = tf.linalg.solve(AtA, Aty)
+        return tf.squeeze(x)
 
     def _invert_solve_sparse(self, xs_ys_vals, y, rcond):
         """
@@ -828,6 +828,21 @@ def taylor_expand(terms, consts={}, prepend="d"):
                 continue
             taylors.append(term[:i] + [prepend + t] + term[i + 1 :])
     return taylors
+
+
+class GradientSolver:
+    def __init__(self, data, sol0, wgts={}, sparse=False, **kwargs):
+        """
+        With tensorflows ability to compute gradients it makes sense to implement a
+        gradient solver. The question is: how do I make this fast with arbitrary
+        equations. Maybe start with a product version like linsolve and go from there
+        """
+        pass
+
+    def solve(self):
+        """
+        """
+        pass
 
 
 # XXX make a version of linproductsolver that taylor expands in e^{a+bi} form

@@ -6,8 +6,11 @@ import numpy as np
 from copy import deepcopy
 import argparse
 import os
-import tf_linsolve as linsolve
 
+# import tf_linsolve as linsolve
+import linsolve
+
+import itertools
 from hera_cal import utils
 from hera_cal import version
 from hera_cal.noise import predict_noise_variance_from_autos
@@ -28,6 +31,154 @@ from hera_cal.apply_cal import calibrate_in_place
 
 SEC_PER_DAY = 86400.0
 IDEALIZED_BL_TOL = 1e-8  # bl_error_tol for redcal.get_reds when using antenna positions calculated from reds
+
+
+def fft_dly_new(
+    data, df, wgts=None, f0=0.0, medfilt=False, kernel=(1, 1, 11), edge_cut=0
+):
+    """Get delay of visibility across band using FFT and Quinn's Second Method to fit the delay and phase offset.
+    Arguments:
+        data : ndarray of complex data (e.g. gains or visibilities) of shape (Ntimes, Nfreqs)
+        df : frequency channel width in Hz
+        wgts : multiplicative wgts of the same shape as the data
+        f0 : float lowest frequency channel. Optional parameter used in getting the offset correct.
+        medfilt : boolean, median filter data before fft
+        kernel : size of median filter kernel along (time, freq) axes
+        edge_cut : int, number of channels to exclude at each band edge of data in FFT window
+    Returns:
+        dlys : (Ntimes, 1) ndarray containing delay for each integration
+        offset : (Ntimes, 1) ndarray containing estimated frequency-independent phases
+    """
+    # setup
+    Nbls, Ntimes, Nfreqs = data.shape
+    if wgts is None:
+        wgts = np.ones_like(data, dtype=np.float32)
+
+    # smooth via median filter
+    if medfilt:
+        data = copy.deepcopy(data)  # this prevents filtering of the original input data
+        data.real = signal.medfilt(data.real, kernel_size=kernel)
+        data.imag = signal.medfilt(data.imag, kernel_size=kernel)
+
+    # fft w/ wgts
+    dw = data * wgts
+    if edge_cut > 0:
+        assert 2 * edge_cut < Nfreqs - 1, "edge_cut cannot be >= Nfreqs/2 - 1"
+        dw = dw[:, :, edge_cut : (-edge_cut + 1)]
+    dw[np.isnan(dw)] = 0
+    fftfreqs = np.fft.fftfreq(dw.shape[2], df)
+    dtau = fftfreqs[1] - fftfreqs[0]
+    vfft = np.fft.fft(dw, axis=-1)
+
+    # get interpolated peak and indices
+    inds, bin_shifts, peaks, interp_peaks = interp_peak_new(vfft)
+    dlys = (fftfreqs[inds] + bin_shifts * dtau).reshape(-1, 1)
+
+    # Now that we know the slope, estimate the remaining phase offset
+    freqs = np.arange(Nfreqs, dtype=data.dtype) * df + f0
+    fSlice = slice(edge_cut, len(freqs) - edge_cut)
+    offset = np.angle(
+        np.sum(
+            wgts[:, :, fSlice]
+            * data[:, :, fSlice]
+            * np.exp(
+                -np.complex64(2j * np.pi)
+                * dlys.reshape(data.shape[0], data.shape[1], 1)
+                * freqs[fSlice].reshape(1, -1)
+            ),
+            axis=2,
+            keepdims=True,
+        )
+        / np.sum(wgts[:, :, fSlice], axis=2, keepdims=True)
+    )
+
+    return dlys.reshape(data.shape[0], data.shape[1], 1), offset
+
+
+def interp_peak_new(data, method="quinn", reject_edges=False):
+    """
+    Spectral interpolation for finding peak and amplitude of data along last axis.
+
+    Args:
+        data : complex 2d ndarray in Fourier space.
+            If fed as 1d array will reshape into [1, N] array.
+            Quinn's method usually operates on complex data (eg. fft'ed data) while the
+            quadratic method operates on real-valued data (generally absolute values).
+        method : either 'quinn' (see https://ieeexplore.ieee.org/document/558515) or 'quadratic'
+            (see https://ccrma.stanford.edu/~jos/sasp/Quadratic_Interpolation_Spectral_Peaks.html).
+        reject_edges : bool, if True, reject solution if it isn't a true "peak", in other words
+            if it is along the axis edges
+
+    Returns:
+        indices : index array holding argmax of data along last axis
+        bin_shifts : estimated peak bin shift value [-1, 1] from indices
+        peaks : argmax of data corresponding to indices
+        new_peaks : estimated peak value at indices + bin_shifts
+    """
+    Nbls, N1, N2 = data.shape
+
+    # get abs
+    dabs = np.abs(data)
+
+    # get argmaxes along last axis
+    if method == "quinn":
+        indices = np.argmax(dabs, axis=-1)
+    elif method == "quadratic":
+        indices = np.argmax(dabs, axis=-1)
+    else:
+        raise ValueError(
+            "'{}' is not a recognized peak interpolation method.".format(method)
+        )
+
+    I, J = np.indices(indices.shape)
+    peaks = data[I, J, indices]
+
+    # calculate shifted peak for sub-bin resolution
+    k0 = data[I, J, indices - 1]
+    k1 = data[I, J, indices]
+    k2 = data[I, J, (indices + 1) % N2]
+
+    if method == "quinn":
+
+        def tau(x):
+            t = 0.25 * np.log(3 * x ** 2 + 6 * x + 1)
+            t -= (
+                6 ** 0.5
+                / 24
+                * np.log((x + 1 - (2.0 / 3.0) ** 0.5) / (x + 1 + (2.0 / 3.0) ** 0.5))
+            )
+            return t
+
+        alpha1 = (k0 / k1).real
+        alpha2 = (k2 / k1).real
+        delta1 = alpha1 / (1 - alpha1)
+        delta2 = -alpha2 / (1 - alpha2)
+        d = (delta1 + delta2) / 2 + tau(delta1 ** 2) - tau(delta2 ** 2)
+        d[~np.isfinite(d)] = 0.0
+
+        ck = np.array(
+            [
+                np.true_divide(
+                    np.exp(2.0j * np.pi * d) - 1,
+                    2.0j * np.pi * (d - k),
+                    where=~(d == 0),
+                )
+                for k in [-1, 0, 1]
+            ]
+        )
+        rho = np.abs(k0 * ck[0] + k1 * ck[1] + k2 * ck[2]) / np.abs(
+            np.sum(ck ** 2, axis=(0))
+        )
+        rho[d == 0] = np.abs(k1[d == 0])
+        return indices, d, np.abs(peaks), rho
+
+    elif method == "quadratic":
+        denom = k0 - 2 * k1 + k2
+        bin_shifts = 0.5 * np.true_divide(
+            (k0 - k2), denom, where=~np.isclose(denom, 0.0)
+        )
+        new_peaks = k1 - 0.25 * (k0 - k2) * bin_shifts
+        return indices, bin_shifts, peaks, new_peaks
 
 
 def get_pos_reds(antpos, bl_error_tol=1.0, include_autos=False):
@@ -1012,49 +1163,47 @@ class RedundantCalibrator:
         mode="default",
         norm=True,
         medfilt=False,
-        kernel=(1, 11),
+        kernel=(1, 1, 11),
     ):
-        """Runs a single iteration of firstcal, which uses phase differences between nominally
-        redundant meausrements to solve for delays and phase offsets that produce gains of the
-        form: np.exp(2j * np.pi * delay * freqs + 1j * offset).
-
-        Arguments:
-            df: frequency change between data bins, scales returned delays by 1/df.
-            f0: frequency of the first channel in the data
-            offsets_only: only solve for phase offsets, dly_sol will be {}
-            For all other arguments, see RedundantCalibrator.firstcal()
-
-        Returns:
-            dly_sol: dictionary of per-antenna delay solutions in the {(index,antpol): np.array}
-                format.  All delays are multiplied by 1/df, so use that to set physical scale.
-            off_sol: dictionary of per antenna phase offsets (in radians) in the same format.
         """
-        Nfreqs = data[next(iter(data))].shape[
-            1
-        ]  # hardcode freq is axis 1 (time is axis 0)
+        """
+        Nfreqs = data[next(iter(data))].shape[1]
         if len(wgts) == 0:
             wgts = {k: np.ones_like(data[k], dtype=np.float32) for k in data}
         wgts = DataContainer(wgts)
         taus_offs, twgts = {}, {}
+
         for bls in self.reds:
-            for i, bl1 in enumerate(bls):
+
+            pairs = list(itertools.combinations(bls, 2))
+            dc = []
+            wc = []
+            for bl1, bl2 in pairs:
                 d1, w1 = data[bl1], wgts[bl1]
-                for bl2 in bls[i + 1 :]:
-                    d12 = d1 * np.conj(data[bl2])
-                    if norm:
-                        ad12 = np.abs(d12)
-                        d12 /= np.where(ad12 == 0, np.float32(1), ad12)
-                    w12 = w1 * wgts[bl2]
-                    taus_offs[(bl1, bl2)] = utils.fft_dly(
-                        d12,
-                        df,
-                        f0=f0,
-                        wgts=w12,
-                        medfilt=medfilt,
-                        kernel=kernel,
-                        edge_cut=edge_cut,
-                    )
-                    twgts[(bl1, bl2)] = np.sum(w12)
+                d12 = d1 * np.conj(data[bl2])
+                if norm:
+                    ad12 = np.abs(d12)
+                    d12 /= np.where(ad12 == 0, np.float32(1), ad12)
+                w12 = w1 * wgts[bl2]
+
+                dc.append(d12)
+                wc.append(w12)
+
+            if len(list(pairs)) >= 1:
+                taus = fft_dly_new(
+                    np.array(dc),
+                    df,
+                    f0=f0,
+                    wgts=np.array(wc),
+                    medfilt=medfilt,
+                    kernel=kernel,
+                    edge_cut=edge_cut,
+                )
+                tauwgts = np.sum(wc, axis=(1, 2))
+                for bi, (bl1, bl2) in enumerate(pairs):
+                    taus_offs[(bl1, bl2)] = (taus[0][bi], taus[1][bi])
+                    twgts[(bl1, bl2)] = tauwgts[bi]
+
         d_ls, w_ls = {}, {}
         for (bl1, bl2), tau_off_ij in taus_offs.items():
             ai, aj = split_bl(bl1)
@@ -1063,6 +1212,7 @@ class RedundantCalibrator:
             eq_key = "%s-%s-%s+%s" % (i, j, m, n)
             d_ls[eq_key] = np.array(tau_off_ij)
             w_ls[eq_key] = twgts[(bl1, bl2)]
+
         ls = linsolve.LinearSolver(d_ls, wgts=w_ls, sparse=sparse)
         sol = ls.solve(mode=mode)
         dly_sol = {self.unpack_sol_key(k): v[0] for k, v in sol.items()}
