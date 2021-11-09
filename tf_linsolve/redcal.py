@@ -1349,10 +1349,10 @@ class RedundantCalibrator:
         )
         ants_used_count = {ant: 0 for ant in ants}
 
-        # for bls in self.reds:
-        for ni in range(niter):
-            # pairs = list(itertools.combinations(bls, 2))
-            pairs = red_grp[slice(int(ni * max_grps), int((ni + 1) * max_grps))]
+        for bls in self.reds:
+            # for ni in range(niter):
+            pairs = list(itertools.combinations(bls, 2))
+            # pairs = red_grp[slice(int(ni * max_grps), int((ni + 1) * max_grps))]
             dc = []
             wc = []
             for bl1, bl2 in pairs:
