@@ -10,7 +10,6 @@ import os
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-# import tf_linsolve as linsolve
 import linsolve
 
 import itertools
@@ -1417,6 +1416,7 @@ class RedundantCalibrator:
         edge_cut=0,
         max_rel_angle=(np.pi / 8),
         max_recursion_depth=6,
+        use_tensorflow=False,
     ):
         """Solve for a calibration solution parameterized by a single delay and phase offset
         per antenna using the phase difference between nominally redundant measurements.
@@ -1468,6 +1468,7 @@ class RedundantCalibrator:
                 norm=norm,
                 medfilt=medfilt,
                 kernel=kernel,
+                use_tensorflow=use_tensorflow,
             )
             if (
                 i == 0
