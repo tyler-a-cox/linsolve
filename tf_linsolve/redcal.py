@@ -35,6 +35,7 @@ SEC_PER_DAY = 86400.0
 IDEALIZED_BL_TOL = 1e-8  # bl_error_tol for redcal.get_reds when using antenna positions calculated from reds
 
 
+@tf.function
 def fft_dly_tensor(
     data, df, wgts=None, f0=0.0, medfilt=False, kernel=(1, 11), edge_cut=0
 ):
@@ -110,6 +111,7 @@ def fft_dly_tensor(
     return dlys.numpy(), offset.numpy()
 
 
+@tf.function
 def interp_peak_tensor(data, method="quinn", reject_edges=False):
     """
     Spectral interpolation for finding peak and amplitude of data along last axis.
