@@ -1328,6 +1328,8 @@ class RedundantCalibrator:
         medfilt=False,
         kernel=(1, 1, 11),
         use_tensorflow=False,
+        max_grps=100,
+        min_vis_per_ant=100,
     ):
         """
         """
@@ -1337,9 +1339,21 @@ class RedundantCalibrator:
         wgts = DataContainer(wgts)
         taus_offs, twgts = {}, {}
 
-        for bls in self.reds:
+        red_grp = [list(itertools.combinations(red, 2)) for red in self.reds]
+        red_grp = sum(red_grp, [])
+        niter = len(red_grp) // max_grps + 1
 
-            pairs = list(itertools.combinations(bls, 2))
+        ndims = len(list(reds_to_antpos(self.reds).values())[0])
+        reds_used = []
+        ants = set(
+            [ant for red in self.reds for bl in red for ant in utils.split_bl(bl)]
+        )
+        ants_used_count = {ant: 0 for ant in ants}
+
+        # for bls in self.reds:
+        for ni in range(niter):
+            # pairs = list(itertools.combinations(bls, 2))
+            pairs = red_grp[slice(int(ni * max_grps), int((ni + 1) * max_grps))]
             dc = []
             wc = []
             for bl1, bl2 in pairs:
@@ -1354,30 +1368,32 @@ class RedundantCalibrator:
                 wc.append(w12)
 
             if len(list(pairs)) >= 1:
-                if use_tensorflow:
-                    taus = fft_dly_tensor(
-                        np.array(dc),
-                        df,
-                        f0=f0,
-                        wgts=np.array(wc),
-                        medfilt=medfilt,
-                        kernel=kernel,
-                        edge_cut=edge_cut,
-                    )
-                else:
-                    taus = fft_dly_new(
-                        np.array(dc),
-                        df,
-                        f0=f0,
-                        wgts=np.array(wc),
-                        medfilt=medfilt,
-                        kernel=kernel,
-                        edge_cut=edge_cut,
-                    )
+                taus = fft_dly_new(
+                    np.array(dc),
+                    df,
+                    f0=f0,
+                    wgts=np.array(wc),
+                    medfilt=medfilt,
+                    kernel=kernel,
+                    edge_cut=edge_cut,
+                )
                 tauwgts = np.sum(wc, axis=(1, 2))
                 for bi, (bl1, bl2) in enumerate(pairs):
                     taus_offs[(bl1, bl2)] = (taus[0][bi], taus[1][bi])
                     twgts[(bl1, bl2)] = tauwgts[bi]
+
+                    if not np.all(tauwgts[bi] == 0):
+                        for bl_here in [bl1, bl2]:
+                            for ant in utils.split_bl(bl_here):
+                                ants_used_count[ant] += 1
+
+            if min_vis_per_ant is not None:
+                reds_used.append(bls)
+
+                if np.all(np.array(list(ants_used_count.values())) >= min_vis_per_ant):
+                    ndims_here = len(list(reds_to_antpos(reds_used).values())[0])
+                    if ndims_here == ndims:
+                        break
 
         d_ls, w_ls = {}, {}
         for (bl1, bl2), tau_off_ij in taus_offs.items():
@@ -1388,6 +1404,7 @@ class RedundantCalibrator:
             d_ls[eq_key] = np.array(tau_off_ij)
             w_ls[eq_key] = twgts[(bl1, bl2)]
 
+        return d_ls, w_ls
         ls = linsolve.LinearSolver(d_ls, wgts=w_ls, sparse=sparse)
         sol = ls.solve(mode=mode)
         dly_sol = {self.unpack_sol_key(k): v[0] for k, v in sol.items()}
@@ -1422,6 +1439,7 @@ class RedundantCalibrator:
         max_rel_angle=(np.pi / 8),
         max_recursion_depth=6,
         use_tensorflow=False,
+        max_grps=100,
     ):
         """Solve for a calibration solution parameterized by a single delay and phase offset
         per antenna using the phase difference between nominally redundant measurements.
@@ -1474,6 +1492,7 @@ class RedundantCalibrator:
                 medfilt=medfilt,
                 kernel=kernel,
                 use_tensorflow=use_tensorflow,
+                max_grps=max_grps,
             )
             if (
                 i == 0
