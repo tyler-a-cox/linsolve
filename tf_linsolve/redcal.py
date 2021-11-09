@@ -57,6 +57,9 @@ def fft_dly_tensor(
     if wgts is None:
         wgts = tf.ones_like(data, dtype=data.dtype)
 
+    else:
+        wgts = tf.cast(wgts, dtype=data.dtype)
+
     # smooth via median filter
     if medfilt:
         data = copy.deepcopy(data)  # this prevents filtering of the original input data
@@ -78,8 +81,10 @@ def fft_dly_tensor(
 
     # get interpolated peak and indices
     inds, bin_shifts, peaks, interp_peaks = interp_peak_tensor(vfft)
+    # print(bin_shifts.shape, dtau.shape, fftfreqs.shape, data.shape)
+
     dlys = tf.reshape(
-        fftfreqs[inds] + bin_shifts * dtau, (data.shape[0], data.shape[1], 1)
+        fftfreqs[inds.numpy()] + bin_shifts * dtau, (data.shape[0], data.shape[1], -1)
     )
 
     # Now that we know the slope, estimate the remaining phase offset
