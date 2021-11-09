@@ -10,7 +10,7 @@ import os
 import tensorflow as tf
 import tensorflow_addons as tfa
 
-from . import tf_linsolve
+import linsolve
 
 import itertools
 from hera_cal import utils
@@ -35,7 +35,6 @@ SEC_PER_DAY = 86400.0
 IDEALIZED_BL_TOL = 1e-8  # bl_error_tol for redcal.get_reds when using antenna positions calculated from reds
 
 
-@tf.function
 def fft_dly_tensor(
     data, df, wgts=None, f0=0.0, medfilt=False, kernel=(1, 11), edge_cut=0
 ):
@@ -111,7 +110,6 @@ def fft_dly_tensor(
     return dlys.numpy(), offset.numpy()
 
 
-@tf.function
 def interp_peak_tensor(data, method="quinn", reject_edges=False):
     """
     Spectral interpolation for finding peak and amplitude of data along last axis.
@@ -1044,7 +1042,7 @@ def make_sol_finite(sol):
             sol[k][~np.isfinite(sol[k])] = np.ones_like(sol[k][~np.isfinite(sol[k])])
 
 
-class OmnicalSolver(tf_linsolve.LinProductSolver):
+class OmnicalSolver(linsolve.LinProductSolver):
     def __init__(self, data, sol0, wgts={}, gain=0.3, **kwargs):
         """Set up a nonlinear system of equations of the form g_i * g_j.conj() * V_mdl = V_ij
         to linearize via the Omnical algorithm described in HERA Memo 50
@@ -1058,7 +1056,7 @@ class OmnicalSolver(tf_linsolve.LinProductSolver):
             sol0: Dictionary mapping all variables (as keyword strings) to their starting guess values.
                 This is the point that is Taylor expanded around, so it must be relatively close to the
                 true chi^2 minimizing solution. In the same format as that produced by
-                tf_linsolve.LogProductSolver.solve() or tf_linsolve.LinProductSolver.solve().
+                linsolve.LogProductSolver.solve() or linsolve.LinProductSolver.solve().
             wgts: Dictionary that maps equation strings from data to real weights to apply to each
                 equation. Weights are treated as 1/sigma^2. All equations in the data must have a weight
                 if wgts is not the default, {}, which means all 1.0s.
@@ -1066,9 +1064,9 @@ class OmnicalSolver(tf_linsolve.LinProductSolver):
                 Values in the range 0.1 to 0.5 are generally safe.  Increasing values trade speed
                 for stability.
             **kwargs: keyword arguments of constants (python variables in keys of data that
-                are not to be solved for) which are passed to tf_linsolve.LinProductSolver.
+                are not to be solved for) which are passed to linsolve.LinProductSolver.
         """
-        tf_linsolve.LinProductSolver.__init__(self, data, sol0, wgts=wgts, **kwargs)
+        linsolve.LinProductSolver.__init__(self, data, sol0, wgts=wgts, **kwargs)
         self.gain = np.float32(
             gain
         )  # float32 to avoid accidentally promoting data to doubles.
@@ -1105,11 +1103,7 @@ class OmnicalSolver(tf_linsolve.LinProductSolver):
         """
         sol = self.sol0
         terms = [
-            (
-                tf_linsolve.get_name(gi),
-                tf_linsolve.get_name(gj),
-                tf_linsolve.get_name(uij),
-            )
+            (linsolve.get_name(gi), linsolve.get_name(gj), linsolve.get_name(uij),)
             for term in self.all_terms
             for (gi, gj, uij) in term
         ]
@@ -1203,7 +1197,7 @@ class OmnicalSolver(tf_linsolve.LinProductSolver):
 class RedundantCalibrator:
     def __init__(self, reds, check_redundancy=False):
         """Initialization of a class object for performing redundant calibration with logcal
-        and lincal, both utilizing tf_linsolve, and also degeneracy removal.
+        and lincal, both utilizing linsolve, and also degeneracy removal.
 
         Args:
             reds: list of lists of redundant baseline tuples, e.g. (ind1,ind2,pol). The first
@@ -1228,9 +1222,9 @@ class RedundantCalibrator:
                 )
 
     def build_eqs(self, dc=None):
-        """Function for generating tf_linsolve equation strings. Optionally takes in a DataContainer to check
+        """Function for generating linsolve equation strings. Optionally takes in a DataContainer to check
         whether baselines in self.reds (or their complex conjugates) occur in the data. Returns a dictionary
-        that maps tf_linsolve string to (ant1, ant2, pol) for all visibilities."""
+        that maps linsolve string to (ant1, ant2, pol) for all visibilities."""
         eqs = {}
         for ubl_index, blgrp in enumerate(self.reds):
             for ant_i, ant_j, pol in blgrp:
@@ -1252,14 +1246,14 @@ class RedundantCalibrator:
         return eqs
 
     def _solver(self, solver, data, wgts={}, detrend_phs=False, **kwargs):
-        """Instantiates a tf_linsolve solver for performing redcal.
+        """Instantiates a linsolve solver for performing redcal.
 
         Args:
-            solver: tf_linsolve solver (e.g. tf_linsolve.LogProductSolver or tf_linsolve.LinProductSolver)
+            solver: linsolve solver (e.g. linsolve.LogProductSolver or linsolve.LinProductSolver)
             data: visibility data in the dictionary format {(ant1,ant2,pol): np.array}
             wgts: dictionary of linear weights in the same format as data. Defaults to equal wgts.
             detrend_phs: takes out average phase, useful for logcal
-            **kwargs: other keyword arguments passed into the solver for use by tf_linsolve, e.g.
+            **kwargs: other keyword arguments passed into the solver for use by linsolve, e.g.
                 sparse (use sparse matrices to represent system of equations).
 
         Returns:
@@ -1291,7 +1285,7 @@ class RedundantCalibrator:
         return solver(data=d_ls, wgts=w_ls, **kwargs)
 
     def unpack_sol_key(self, k):
-        """Turn tf_linsolve's internal variable string into antenna or baseline tuple (with polarization)."""
+        """Turn linsolve's internal variable string into antenna or baseline tuple (with polarization)."""
 
         if k.startswith("g"):  # 'g' = gain solution
             return (int(k.split("_")[1]), k.split("_")[2])
@@ -1299,7 +1293,7 @@ class RedundantCalibrator:
             return self.reds[int(k.split("_")[1])][0]
 
     def pack_sol_key(self, k):
-        """Turn an antenna or baseline tuple (with polarization) into tf_linsolve's internal variable string."""
+        """Turn an antenna or baseline tuple (with polarization) into linsolve's internal variable string."""
 
         if len(k) == 2:  # 'g' = gain solution
             return "g_%d_%s" % k
@@ -1394,7 +1388,7 @@ class RedundantCalibrator:
             d_ls[eq_key] = np.array(tau_off_ij)
             w_ls[eq_key] = twgts[(bl1, bl2)]
 
-        ls = tf_linsolve.LinearSolver(d_ls, wgts=w_ls, sparse=sparse)
+        ls = linsolve.LinearSolver(d_ls, wgts=w_ls, sparse=sparse)
         sol = ls.solve(mode=mode)
         dly_sol = {self.unpack_sol_key(k): v[0] for k, v in sol.items()}
         off_sol = {self.unpack_sol_key(k): v[1] for k, v in sol.items()}
@@ -1441,10 +1435,10 @@ class RedundantCalibrator:
             maxiter: maximum number of phase offset solver iterations
             conv_crit: convergence criterion for iterative offset solver, defined as the L2 norm
                 of the changes in phase (in radians) over all times and antennas
-            sparse: represent the A matrix (visibilities to parameters) sparsely in tf_linsolve
-            mode: solving mode passed to the tf_linsolve linear solver ('default', 'lsqr', 'pinv', or 'solve')
+            sparse: represent the A matrix (visibilities to parameters) sparsely in linsolve
+            mode: solving mode passed to the linsolve linear solver ('default', 'lsqr', 'pinv', or 'solve')
                 Suggest using 'default' unless solver is having stability (convergence) problems.
-                More documentation of modes in tf_linsolve.LinearSolver.solve().
+                More documentation of modes in linsolve.LinearSolver.solve().
             norm: calculate delays from just the phase information (not the amplitude) of the data.
                 This is a pretty effective way to get reliable delay even in the presence of RFI.
             medfilt : boolean, median filter data before fft.  This can work for data containing
@@ -1547,10 +1541,10 @@ class RedundantCalibrator:
                 logcal and then multiplied back into the returned gains in the solution.
                 Missing gains are treated as 1.0s.
             wgts: dictionary of linear weights in the same format as data. Defaults to equal wgts.
-            sparse: represent the A matrix (visibilities to parameters) sparsely in tf_linsolve
-            mode: solving mode passed to the tf_linsolve linear solver ('default', 'lsqr', 'pinv', or 'solve')
+            sparse: represent the A matrix (visibilities to parameters) sparsely in linsolve
+            mode: solving mode passed to the linsolve linear solver ('default', 'lsqr', 'pinv', or 'solve')
                 Suggest using 'default' unless solver is having stability (convergence) problems.
-                More documentation of modes in tf_linsolve.LinearSolver.solve().
+                More documentation of modes in linsolve.LinearSolver.solve().
 
         Returns:
             meta: empty dictionary (to maintain consistency with related functions)
@@ -1560,7 +1554,7 @@ class RedundantCalibrator:
         fc_data = deepcopy(data)
         calibrate_in_place(fc_data, sol0)
         ls = self._solver(
-            tf_linsolve.LogProductSolver,
+            linsolve.LogProductSolver,
             fc_data,
             wgts=wgts,
             detrend_phs=True,
@@ -1594,13 +1588,13 @@ class RedundantCalibrator:
             sol0: dictionary of guess gains and unique model visibilities, keyed by antenna tuples
                 like (ant,antpol) or baseline tuples like. Gains should include firstcal gains.
             wgts: dictionary of linear weights in the same format as data. Defaults to equal wgts.
-            sparse: represent the A matrix (visibilities to parameters) sparsely in tf_linsolve
+            sparse: represent the A matrix (visibilities to parameters) sparsely in linsolve
             conv_crit: maximum allowed relative change in solutions to be considered converged
             maxiter: maximum number of lincal iterations allowed before it gives up
             verbose: print stuff
-            mode: solving mode passed to the tf_linsolve linear solver ('default', 'lsqr', 'pinv', or 'solve')
+            mode: solving mode passed to the linsolve linear solver ('default', 'lsqr', 'pinv', or 'solve')
                 Suggest using 'default' unless solver is having stability (convergence) problems.
-                More documentation of modes in tf_linsolve.LinearSolver.solve().
+                More documentation of modes in linsolve.LinearSolver.solve().
 
         Returns:
             meta: dictionary of information about the convergence and chi^2 of the solution
@@ -1610,7 +1604,7 @@ class RedundantCalibrator:
 
         sol0 = {self.pack_sol_key(k): sol0[k] for k in sol0.keys()}
         ls = self._solver(
-            tf_linsolve.LinProductSolver, data, sol0=sol0, wgts=wgts, sparse=sparse
+            linsolve.LinProductSolver, data, sol0=sol0, wgts=wgts, sparse=sparse
         )
         meta, sol = ls.solve_iteratively(
             conv_crit=conv_crit, maxiter=maxiter, verbose=verbose, mode=mode
@@ -1837,7 +1831,7 @@ class RedundantCalibrator:
                     for bl in red
                 }
             )
-            solver = self._solver(tf_linsolve.LogProductSolver, dummy_data)
+            solver = self._solver(linsolve.LogProductSolver, dummy_data)
             return np.sum(
                 [
                     A.shape[1]
@@ -1885,7 +1879,7 @@ def predict_chisq_per_bl(reds):
     bls = [bl for red in reds for bl in red]
     dummy_data = DataContainer({bl: np.ones((1, 1), dtype=np.complex) for bl in bls})
     rc = RedundantCalibrator(reds)
-    solver = rc._solver(tf_linsolve.LogProductSolver, dummy_data)
+    solver = rc._solver(linsolve.LogProductSolver, dummy_data)
 
     A = solver.ls_amp.get_A()[:, :, 0]
     B = solver.ls_phs.get_A()[:, :, 0]
@@ -2027,7 +2021,7 @@ def linear_cal_update(
     Arguments:
         bls: list of baseline tuples like (0,1,'nn') to solve for the single remaining term
             using the corresponding data and the prior gain/visibility solutions. If any
-            bl has two unsolved terms, tf_linsolve will throw an error.
+            bl has two unsolved terms, linsolve will throw an error.
         cal: dictionary of redundant calibration solutions, updated in place, like the one
             produced by redcal.redundantly_calibrate(). See that function more details.
         data: DataContainer mapping baseline-pol tuples like (0,1,'nn') to complex data of
@@ -2093,7 +2087,7 @@ def linear_cal_update(
 
     d_ls = {eq: data[bl] for eq, bl in eqs.items()}
     w_ls = {eq: bl_wgts[bl] for eq, bl in eqs.items()}
-    ls = tf_linsolve.LinearSolver(d_ls, wgts=w_ls, **consts)
+    ls = linsolve.LinearSolver(d_ls, wgts=w_ls, **consts)
     sol = {rc_all.unpack_sol_key(k): val for k, val in ls.solve(mode="pinv").items()}
     for k in sol:  # flag data when it has zero or undefined weight
         sol[k][(total_wgts[k] == 0) | ~np.isfinite(total_wgts[k])] = np.nan
