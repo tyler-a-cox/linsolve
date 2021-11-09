@@ -1327,7 +1327,6 @@ class RedundantCalibrator:
         norm=True,
         medfilt=False,
         kernel=(1, 1, 11),
-        use_tensorflow=False,
         max_grps=100,
         min_vis_per_ant=100,
     ):
@@ -1438,8 +1437,8 @@ class RedundantCalibrator:
         edge_cut=0,
         max_rel_angle=(np.pi / 8),
         max_recursion_depth=6,
-        use_tensorflow=False,
         max_grps=100,
+        min_vis_per_ant=100,
     ):
         """Solve for a calibration solution parameterized by a single delay and phase offset
         per antenna using the phase difference between nominally redundant measurements.
@@ -1491,7 +1490,7 @@ class RedundantCalibrator:
                 norm=norm,
                 medfilt=medfilt,
                 kernel=kernel,
-                use_tensorflow=use_tensorflow,
+                min_vis_per_ant=min_vis_per_ant,
                 max_grps=max_grps,
             )
             if (
