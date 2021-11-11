@@ -1,124 +1,14 @@
 Timer unit: 1e-06 s
 
-Total time: 306.877 s
-File: /lustre/aoc/projects/hera/tcox/anaconda3/envs/hera/lib/python3.7/site-packages/tf_linsolve/redcal.py
-Function: redundantly_calibrate at line 2325
+Total time: 109.814 s
+File: <ipython-input-107-e1a68401b4af>
+Function: newrun at line 1
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
-  2325                                           def redundantly_calibrate(
-  2326                                               data,
-  2327                                               reds,
-  2328                                               freqs=None,
-  2329                                               times_by_bl=None,
-  2330                                               fc_conv_crit=1e-6,
-  2331                                               fc_maxiter=50,
-  2332                                               oc_conv_crit=1e-10,
-  2333                                               oc_maxiter=500,
-  2334                                               check_every=10,
-  2335                                               check_after=50,
-  2336                                               gain=0.4,
-  2337                                               max_dims=2,
-  2338                                           ):
-  2339                                               """Performs all three steps of redundant calibration: firstcal, logcal, and omnical.
-  2340
-  2341                                               Arguments:
-  2342                                                   data: dictionary or DataContainer mapping baseline-pol tuples like (0,1,'nn') to
-  2343                                                       complex data of shape. Asummed to have no flags.
-  2344                                                   reds: list of lists of redundant baseline tuples, e.g. (0,1,'nn'). The first
-  2345                                                       item in each list will be treated as the key for the unique baseline.
-  2346                                                   freqs: 1D numpy array frequencies in Hz. Optional if inferable from data DataContainer,
-  2347                                                       but must be provided if data is a dictionary, if it doesn't have .freqs, or if the
-  2348                                                       length of data.freqs is 1.
-  2349                                                   times_by_bl: dictionary mapping antenna pairs like (0,1) to float Julian Date. Optional if
-  2350                                                       inferable from data DataContainer, but must be provided if data is a dictionary,
-  2351                                                       if it doesn't have .times_by_bl, or if the length of any list of times is 1.
-  2352                                                   fc_conv_crit: maximum allowed changed in firstcal phases for convergence
-  2353                                                   fc_maxiter: maximum number of firstcal iterations allowed for finding per-antenna phases
-  2354                                                   oc_conv_crit: maximum allowed relative change in omnical solutions for convergence
-  2355                                                   oc_maxiter: maximum number of omnical iterations allowed before it gives up
-  2356                                                   check_every: compute omnical convergence every Nth iteration (saves computation).
-  2357                                                   check_after: start computing omnical convergence only after N iterations (saves computation).
-  2358                                                   gain: The fractional step made toward the new solution each omnical iteration. Values in the
-  2359                                                       range 0.1 to 0.5 are generally safe. Increasing values trade speed for stability.
-  2360                                                   max_dims: maximum allowed generalized tip/tilt phase degeneracies of redcal that are fixed
-  2361                                                       with remove_degen() and must be later abscaled. None is no limit. 2 is a classically
-  2362                                                       "redundantly calibratable" planar array.  More than 2 usually arises with subarrays of
-  2363                                                       redundant baselines. Antennas will be excluded from reds to satisfy this.
-  2364
-  2365                                               Returns a dictionary of results with the following keywords:
-  2366                                                   'g_firstcal': firstcal gains in dictionary keyed by ant-pol tuples like (1,'Jnn').
-  2367                                                       Gains are Ntimes x Nfreqs gains but fully described by a per-antenna delay.
-  2368                                                   'gf_firstcal': firstcal gain flags in the same format as 'g_firstcal'. Will be all False.
-  2369                                                   'g_omnical': full omnical gain dictionary (which include firstcal gains) in the same format.
-  2370                                                       Flagged gains will be 1.0s.
-  2371                                                   'gf_omnical': omnical flag dictionary in the same format. Flags arise from NaNs in log/omnical.
-  2372                                                   'v_omnical': omnical visibility solutions dictionary with baseline-pol tuple keys that are the
-  2373                                                       first elements in each of the sub-lists of reds. Flagged visibilities will be 0.0s.
-  2374                                                   'vf_omnical': omnical visibility flag dictionary in the same format. Flags arise from NaNs.
-  2375                                                   'chisq': chi^2 per degree of freedom for the omnical solution. Normalized using noise derived
-  2376                                                       from autocorrelations. If the inferred pol_mode from reds (see redcal.parse_pol_mode) is
-  2377                                                       '1pol' or '2pol', this is a dictionary mapping antenna polarization (e.g. 'Jnn') to chi^2.
-  2378                                                       Otherwise, there is a single chisq (because polarizations mix) and this is a numpy array.
-  2379                                                   'chisq_per_ant': dictionary mapping ant-pol tuples like (1,'Jnn') to the average chisq
-  2380                                                       for all visibilities that an antenna participates in.
-  2381                                                   'fc_meta' : dictionary that includes delays and identifies flipped antennas
-  2382                                                   'omni_meta': dictionary of information about the omnical convergence and chi^2 of the solution
-  2383                                               """
-  2384         1          8.0      8.0      0.0      rv = {}  # dictionary of return values
-  2385         1      97943.0  97943.0      0.0      filtered_reds = filter_reds(reds, max_dims=max_dims)
-  2386         1        181.0    181.0      0.0      rc = RedundantCalibrator(filtered_reds)
-  2387         1          3.0      3.0      0.0      if freqs is None:
-  2388         1          4.0      4.0      0.0          freqs = data.freqs
-  2389         1          3.0      3.0      0.0      if times_by_bl is None:
-  2390         1          3.0      3.0      0.0          times_by_bl = data.times_by_bl
-  2391
-  2392                                               # perform firstcal
-  2393         1          3.0      3.0      0.0      rv["fc_meta"], rv["g_firstcal"] = rc.firstcal(
-  2394         1   49241757.0 49241757.0     16.0          data, freqs, maxiter=fc_maxiter, conv_crit=fc_conv_crit
-  2395                                               )
-  2396         1          4.0      4.0      0.0      rv["gf_firstcal"] = {
-  2397         1        548.0    548.0      0.0          ant: np.zeros_like(g, dtype=bool) for ant, g in rv["g_firstcal"].items()
-  2398                                               }
-  2399
-  2400                                               # perform logcal and omnical
-  2401         1   13331084.0 13331084.0      4.3      _, log_sol = rc.logcal(data, sol0=rv["g_firstcal"])
-  2402         1      20406.0  20406.0      0.0      make_sol_finite(log_sol)
-  2403         1          4.0      4.0      0.0      data_wgts = {
-  2404                                                   bl: predict_noise_variance_from_autos(
-  2405                                                       bl, data, dt=(np.median(np.ediff1d(times_by_bl[bl[:2]])) * SEC_PER_DAY)
-  2406                                                   )
-  2407                                                   ** -1
-  2408         1    1612609.0 1612609.0      0.5          for bl in data.keys()
-  2409                                               }
-  2410         1          5.0      5.0      0.0      rv["omni_meta"], omni_sol = rc.omnical(
-  2411         1          3.0      3.0      0.0          data,
-  2412         1          3.0      3.0      0.0          log_sol,
-  2413         1          3.0      3.0      0.0          wgts=data_wgts,
-  2414         1          2.0      2.0      0.0          conv_crit=oc_conv_crit,
-  2415         1          2.0      2.0      0.0          maxiter=oc_maxiter,
-  2416         1          3.0      3.0      0.0          check_every=check_every,
-  2417         1          2.0      2.0      0.0          check_after=check_after,
-  2418         1  239056738.0 239056738.0     77.9          gain=gain,
-  2419                                               )
-  2420
-  2421                                               # update omnical flags and then remove degeneracies
-  2422         1         98.0     98.0      0.0      rv["g_omnical"], rv["v_omnical"] = get_gains_and_vis_from_sol(omni_sol)
-  2423         1      10511.0  10511.0      0.0      rv["gf_omnical"] = {ant: ~np.isfinite(g) for ant, g in rv["g_omnical"].items()}
-  2424         1          4.0      4.0      0.0      rv["vf_omnical"] = DataContainer(
-  2425         1      18918.0  18918.0      0.0          {bl: ~np.isfinite(v) for bl, v in rv["v_omnical"].items()}
-  2426                                               )
-  2427         1    1806017.0 1806017.0      0.6      rd_sol = rc.remove_degen(omni_sol, degen_sol=rv["g_firstcal"])
-  2428         1      21607.0  21607.0      0.0      make_sol_finite(rd_sol)
-  2429         1         77.0     77.0      0.0      rv["g_omnical"], rv["v_omnical"] = get_gains_and_vis_from_sol(rd_sol)
-  2430         1        702.0    702.0      0.0      rv["v_omnical"] = DataContainer(rv["v_omnical"])
-  2431         1          2.0      2.0      0.0      rv["g_omnical"] = {
-  2432                                                   ant: g * ~rv["gf_omnical"][ant] + rv["gf_omnical"][ant]
-  2433         1      14903.0  14903.0      0.0          for ant, g in rv["g_omnical"].items()
-  2434                                               }
-  2435
-  2436                                               # compute chisqs
-  2437         1          3.0      3.0      0.0      rv["chisq"], rv["chisq_per_ant"] = normalized_chisq(
-  2438         1    1642764.0 1642764.0      0.5          data, data_wgts, filtered_reds, rv["v_omnical"], rv["g_omnical"]
-  2439                                               )
-  2440         1          3.0      3.0      0.0      return rv
+     1                                           def newrun(data, freqs, wgts):
+     2                                               """
+     3                                               """
+     4         1   65025467.0 65025467.0     59.2      meta, sol0_new = info_new.firstcal(data, freqs, max_grps=100)
+     5         1     594993.0 594993.0      0.5      meta, log_sol_new = info_new.logcal(data, sol0=sol0_new)
+     6         1   44193436.0 44193436.0     40.2      meta, sol_new = info_new.omnical(data, log_sol_new, wgts=wgts, maxiter=500)

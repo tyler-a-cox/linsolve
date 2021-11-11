@@ -34,6 +34,220 @@ from hera_cal.apply_cal import calibrate_in_place
 SEC_PER_DAY = 86400.0
 IDEALIZED_BL_TOL = 1e-8  # bl_error_tol for redcal.get_reds when using antenna positions calculated from reds
 
+OPTIMIZERS = {
+    "Adadelta": tf.optimizers.Adadelta,
+    "Adam": tf.optimizers.Adam,
+    "Adamax": tf.optimizers.Adamax,
+    "Ftrl": tf.optimizers.Ftrl,
+    "Nadam": tf.optimizers.Nadam,
+    "SGD": tf.optimizers.SGD,
+    "RMSprop": tf.optimizers.RMSprop,
+}
+
+
+def data_model(g_r, g_i, vr, vi, ant0_inds, ant1_inds, vis_inds):
+    """
+    """
+    gr0 = tf.gather(g_r, ant0_inds)
+    gr1 = tf.gather(g_r, ant1_inds)
+    gi0 = tf.gather(g_i, ant0_inds)
+    gi1 = tf.gather(g_i, ant1_inds)
+    vis_r = tf.gather(vr, vis_inds)
+    vis_i = tf.gather(vi, vis_inds)
+    grgr = gr0 * gr1
+    gigi = gi0 * gi1
+    grgi = gr0 * gi1
+    gigr = gi0 * gr1
+    model_r = (grgr + gigi) * vis_r + (grgi - gigr) * vis_i
+    model_i = (gigr - grgi) * vis_r + (grgr + gigi) * vis_i
+    return model_r, model_i
+
+
+def mse(g_r, g_i, vr, vi, data_r, data_i, wgts, ants0_inds, ants1_inds, vis_inds):
+    """
+    """
+    model_r, model_i = data_model(g_r, g_i, vr, vi, ants0_inds, ants1_inds, vis_inds)
+    return tf.reduce_sum(
+        (tf.square(data_r - model_r) + tf.square(data_i - model_i)) * wgts
+    )
+
+
+def fit_gains(
+    g_r,
+    g_i,
+    vr,
+    vi,
+    data_r,
+    data_i,
+    wgts,
+    ants_ind0,
+    ants_ind1,
+    vis_ind,
+    maxiter=1000,
+    optimizer="Adamax",
+    graph_mode=True,
+    graph_args_dict={},
+    **opt_kwargs,
+):
+    """
+    """
+    opt = OPTIMIZERS[optimizer](**opt_kwargs)
+    g_r = tf.Variable(g_r)
+    g_i = tf.Variable(g_i)
+    vr = tf.Variable(vr)
+    vi = tf.Variable(vi)
+    vars = [g_r, g_i, vr, vi]
+
+    def loss_function():
+        """
+        """
+        return mse(
+            g_r, g_i, vr, vi, data_r, data_i, wgts, ants_ind0, ants_ind1, vis_ind
+        )
+
+    def train_step_code():
+        """
+        """
+        with tf.GradientTape() as tape:
+            loss = loss_function()
+        grads = tape.gradient(loss, vars)
+        opt.apply_gradients(zip(grads, vars))
+        return loss
+
+    if graph_mode:
+
+        @tf.function(**graph_args_dict)
+        def train_step():
+            return train_step_code()
+
+    else:
+
+        def train_step():
+            return train_step_code()
+
+    fit_history = {"loss": []}
+    for step in tqdm(range(maxiter)):
+        loss = train_step()
+        fit_history["loss"].append(loss.numpy())
+
+    return tf.complex(g_r, g_i).numpy(), tf.complex(vr, vi).numpy(), fit_history
+
+
+def tensorize_components(data, wgts, reds, sol0):
+    """
+    """
+    gt = list(filter(lambda x: len(x) < 3, list(sol0.keys())))
+    gt = sorted([g[0] for g in gt])
+    ants_map = {(g, "Jnn"): gi for gi, g in enumerate(gt)}
+    vis_map = {}
+    ant_ind0, ant_ind1 = [], []
+    vis_inds = []
+
+    data_r, data_i = [], []
+    wgts_arr = []
+    g_r = [sol0[(g, "Jnn")].real for g in gt]
+    g_i = [sol0[(g, "Jnn")].imag for g in gt]
+
+    vr = []
+    vi = []
+
+    for ri, red in enumerate(reds):
+        vis = sol0.get(red[0])
+        if vis is None:
+            vis = (
+                data[red[0]]
+                / sol0[(red[0][0], "Jnn")]
+                / sol0[(red[0][1], "Jnn")].conj()
+            )
+        vr.append(vis.real)
+        vi.append(vis.imag)
+        vis_map[red[0]] = ri
+
+    for key in data.keys():
+        ant_ind0.append(ants_map[(key[0], "Jnn")])
+        ant_ind1.append(ants_map[(key[1], "Jnn")])
+
+        for ri, red in enumerate(reds):
+            if key in red:
+                vis_inds.append(ri)
+                break
+
+        data_r.append(data[key].real)
+        data_i.append(data[key].imag)
+        wgts_arr.append(wgts[key])
+
+    g_r = tf.convert_to_tensor(g_r)
+    g_i = tf.convert_to_tensor(g_i)
+    data_r = tf.convert_to_tensor(data_r)
+    data_i = tf.convert_to_tensor(data_i)
+    vr = tf.convert_to_tensor(vr)
+    vi = tf.convert_to_tensor(vi)
+    wgts = tf.convert_to_tensor(wgts_arr, dtype=data_r.dtype)
+
+    return (
+        g_r,
+        g_i,
+        vr,
+        vi,
+        data_r,
+        data_i,
+        wgts,
+        ant_ind0,
+        ant_ind1,
+        vis_inds,
+        ants_map,
+        vis_map,
+    )
+
+
+def run_optimization(
+    data,
+    wgts,
+    reds,
+    sol0,
+    maxiter=1000,
+    graph_mode=False,
+    optimizer="Adamax",
+    graph_args_dict={},
+):
+    """
+    """
+    (
+        g_r,
+        g_i,
+        vr,
+        vi,
+        data_r,
+        data_i,
+        wgts,
+        ant_ind0,
+        ant_ind1,
+        vis_ind,
+        ants_map,
+        vis_map,
+    ) = tensorize_components(data, wgts, reds, sol0)
+
+    gains, vis, loss = fit_gains(
+        g_r,
+        g_i,
+        vr,
+        vi,
+        data_r,
+        data_i,
+        wgts,
+        ant_ind0,
+        ant_ind1,
+        vis_ind,
+        maxiter=maxiter,
+        graph_mode=graph_mode,
+        optimizer=optimizer,
+        graph_args_dict=graph_args_dict,
+    )
+    sol = {g: gains[gi] for g, gi in ants_map.items()}
+    sol.update({v: vis[vi] for v, vi in vis_map.items()})
+
+    return sol, gains, vis, loss
+
 
 def fft_dly_tensor(
     data, df, wgts=None, f0=0.0, medfilt=False, kernel=(1, 11), edge_cut=0
@@ -2459,7 +2673,7 @@ def redcal_iteration(
     gain=0.4,
     max_dims=2,
     verbose=False,
-    **filter_reds_kwargs
+    **filter_reds_kwargs,
 ):
     """Perform redundant calibration (firstcal, logcal, and omnical) an entire HERAData object, loading only
     nInt_to_load integrations at a time and skipping and flagging times when the sun is above solar_horizon.
@@ -2816,7 +3030,7 @@ def redcal_run(
     add_to_history="",
     max_dims=2,
     verbose=False,
-    **filter_reds_kwargs
+    **filter_reds_kwargs,
 ):
     """Perform redundant calibration (firstcal, logcal, and omnical) an uvh5 data file, saving firstcal and omnical
     results to calfits and uvh5. Uses partial io if desired, performs solar flagging, and iteratively removes antennas
@@ -2950,7 +3164,7 @@ def redcal_run(
             max_dims=max_dims,
             gain=gain,
             verbose=verbose,
-            **filter_reds_kwargs
+            **filter_reds_kwargs,
         )
 
         # Determine whether to add additional antennas to exclude
