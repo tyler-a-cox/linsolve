@@ -196,12 +196,10 @@ def interp_peak_tensor(data, method="quinn", reject_edges=False):
         return indices, bin_shifts, peaks, new_peaks
 
 
-def fft_dly_new(
-    data, df, wgts=None, f0=0.0, medfilt=False, kernel=(1, 1, 11), edge_cut=0
-):
+def fft_dly_new(data, df, wgts=None, f0=0.0, medfilt=False, kernel=(1, 11), edge_cut=0):
     """Get delay of visibility across band using FFT and Quinn's Second Method to fit the delay and phase offset.
     Arguments:
-        data : ndarray of complex data (e.g. gains or visibilities) of shape (Ntimes, Nfreqs)
+        data : ndarray of complex data (e.g. gains or visibilities) of shape (Ntimes, Nfreqs) or (Nbls, Ntimes, Nfreqs)
         df : frequency channel width in Hz
         wgts : multiplicative wgts of the same shape as the data
         f0 : float lowest frequency channel. Optional parameter used in getting the offset correct.
@@ -213,7 +211,14 @@ def fft_dly_new(
         offset : (Ntimes, 1) ndarray containing estimated frequency-independent phases
     """
     # setup
-    Nbls, Ntimes, Nfreqs = data.shape
+    if data.ndim == 2:
+        Ntimes, Nfreqs = data.shape
+
+    if data.ndim == 3:
+        Nbls, Ntimes, Nfreqs = data.shape
+        if len(kernel) == 2:
+            kernel = (1, kernel[0], kernel[1])
+
     if wgts is None:
         wgts = np.ones_like(data, dtype=np.float32)
 
@@ -227,35 +232,38 @@ def fft_dly_new(
     dw = data * wgts
     if edge_cut > 0:
         assert 2 * edge_cut < Nfreqs - 1, "edge_cut cannot be >= Nfreqs/2 - 1"
-        dw = dw[:, :, edge_cut : (-edge_cut + 1)]
+        dw = dw[..., edge_cut : (-edge_cut + 1)]
     dw[np.isnan(dw)] = 0
-    fftfreqs = np.fft.fftfreq(dw.shape[2], df)
+    fftfreqs = np.fft.fftfreq(dw.shape[-1], df)
     dtau = fftfreqs[1] - fftfreqs[0]
     vfft = np.fft.fft(dw, axis=-1)
 
     # get interpolated peak and indices
     inds, bin_shifts, peaks, interp_peaks = interp_peak_new(vfft)
-    dlys = (fftfreqs[inds] + bin_shifts * dtau).reshape(-1, 1)
+
+    if data.ndim == 2:
+        dlys = (fftfreqs[inds] + bin_shifts * dtau).reshape(-1, 1)
+
+    if data.ndim == 3:
+        dlys = (fftfreqs[inds] + bin_shifts * dtau).reshape(
+            data.shape[0], data.shape[1], 1
+        )
 
     # Now that we know the slope, estimate the remaining phase offset
     freqs = np.arange(Nfreqs, dtype=data.dtype) * df + f0
     fSlice = slice(edge_cut, len(freqs) - edge_cut)
     offset = np.angle(
         np.sum(
-            wgts[:, :, fSlice]
-            * data[:, :, fSlice]
-            * np.exp(
-                -np.complex64(2j * np.pi)
-                * dlys.reshape(data.shape[0], data.shape[1], 1)
-                * freqs[fSlice].reshape(1, -1)
-            ),
-            axis=2,
+            wgts[..., fSlice]
+            * data[..., fSlice]
+            * np.exp(-np.complex64(2j * np.pi) * dlys * freqs[fSlice].reshape(1, -1)),
+            axis=-1,
             keepdims=True,
         )
-        / np.sum(wgts[:, :, fSlice], axis=2, keepdims=True)
+        / np.sum(wgts[..., fSlice], axis=-1, keepdims=True)
     )
 
-    return dlys.reshape(data.shape[0], data.shape[1], 1), offset
+    return dlys, offset
 
 
 def interp_peak_new(data, method="quinn", reject_edges=False):
@@ -278,7 +286,14 @@ def interp_peak_new(data, method="quinn", reject_edges=False):
         peaks : argmax of data corresponding to indices
         new_peaks : estimated peak value at indices + bin_shifts
     """
-    Nbls, N1, N2 = data.shape
+    if data.ndim == 1:
+        data = data[None, :]
+
+    if data.ndim == 2:
+        N1, N2 = data.shape
+
+    if data.ndim == 3:
+        Nbls, N1, N2 = data.shape
 
     # get abs
     dabs = np.abs(data)
@@ -293,13 +308,13 @@ def interp_peak_new(data, method="quinn", reject_edges=False):
             "'{}' is not a recognized peak interpolation method.".format(method)
         )
 
-    I, J = np.indices(indices.shape)
-    peaks = data[I, J, indices]
+    index = np.indices(indices.shape)
+    peaks = data[(*index, indices)]
 
     # calculate shifted peak for sub-bin resolution
-    k0 = data[I, J, indices - 1]
-    k1 = data[I, J, indices]
-    k2 = data[I, J, (indices + 1) % N2]
+    k0 = data[(*index, indices - 1)]
+    k1 = data[(*index, indices)]
+    k2 = data[(*index, (indices + 1) % N2)]
 
     if method == "quinn":
 
@@ -1349,8 +1364,8 @@ class RedundantCalibrator:
         )
         ants_used_count = {ant: 0 for ant in ants}
 
+        # for ni in range(niter):
         for bls in self.reds:
-            # for ni in range(niter):
             pairs = list(itertools.combinations(bls, 2))
             # pairs = red_grp[slice(int(ni * max_grps), int((ni + 1) * max_grps))]
             dc = []
@@ -1403,7 +1418,6 @@ class RedundantCalibrator:
             d_ls[eq_key] = np.array(tau_off_ij)
             w_ls[eq_key] = twgts[(bl1, bl2)]
 
-        return d_ls, w_ls
         ls = linsolve.LinearSolver(d_ls, wgts=w_ls, sparse=sparse)
         sol = ls.solve(mode=mode)
         dly_sol = {self.unpack_sol_key(k): v[0] for k, v in sol.items()}

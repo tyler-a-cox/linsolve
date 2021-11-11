@@ -1,0 +1,89 @@
+Timer unit: 1e-06 s
+
+Total time: 332.019 s
+File: /lustre/aoc/projects/hera/tcox/anaconda3/envs/hera/lib/python3.7/site-packages/hera_cal/redcal.py
+Function: redundantly_calibrate at line 1496
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+  1496                                           def redundantly_calibrate(data, reds, freqs=None, times_by_bl=None, fc_conv_crit=1e-6,
+  1497                                                                     fc_maxiter=50, oc_conv_crit=1e-10, oc_maxiter=500, check_every=10,
+  1498                                                                     check_after=50, gain=.4, max_dims=2):
+  1499                                               '''Performs all three steps of redundant calibration: firstcal, logcal, and omnical.
+  1500
+  1501                                               Arguments:
+  1502                                                   data: dictionary or DataContainer mapping baseline-pol tuples like (0,1,'nn') to
+  1503                                                       complex data of shape. Asummed to have no flags.
+  1504                                                   reds: list of lists of redundant baseline tuples, e.g. (0,1,'nn'). The first
+  1505                                                       item in each list will be treated as the key for the unique baseline.
+  1506                                                   freqs: 1D numpy array frequencies in Hz. Optional if inferable from data DataContainer,
+  1507                                                       but must be provided if data is a dictionary, if it doesn't have .freqs, or if the
+  1508                                                       length of data.freqs is 1.
+  1509                                                   times_by_bl: dictionary mapping antenna pairs like (0,1) to float Julian Date. Optional if
+  1510                                                       inferable from data DataContainer, but must be provided if data is a dictionary,
+  1511                                                       if it doesn't have .times_by_bl, or if the length of any list of times is 1.
+  1512                                                   fc_conv_crit: maximum allowed changed in firstcal phases for convergence
+  1513                                                   fc_maxiter: maximum number of firstcal iterations allowed for finding per-antenna phases
+  1514                                                   oc_conv_crit: maximum allowed relative change in omnical solutions for convergence
+  1515                                                   oc_maxiter: maximum number of omnical iterations allowed before it gives up
+  1516                                                   check_every: compute omnical convergence every Nth iteration (saves computation).
+  1517                                                   check_after: start computing omnical convergence only after N iterations (saves computation).
+  1518                                                   gain: The fractional step made toward the new solution each omnical iteration. Values in the
+  1519                                                       range 0.1 to 0.5 are generally safe. Increasing values trade speed for stability.
+  1520                                                   max_dims: maximum allowed generalized tip/tilt phase degeneracies of redcal that are fixed
+  1521                                                       with remove_degen() and must be later abscaled. None is no limit. 2 is a classically
+  1522                                                       "redundantly calibratable" planar array.  More than 2 usually arises with subarrays of
+  1523                                                       redundant baselines. Antennas will be excluded from reds to satisfy this.
+  1524
+  1525                                               Returns a dictionary of results with the following keywords:
+  1526                                                   'g_firstcal': firstcal gains in dictionary keyed by ant-pol tuples like (1,'Jnn').
+  1527                                                       Gains are Ntimes x Nfreqs gains but fully described by a per-antenna delay.
+  1528                                                   'gf_firstcal': firstcal gain flags in the same format as 'g_firstcal'. Will be all False.
+  1529                                                   'g_omnical': full omnical gain dictionary (which include firstcal gains) in the same format.
+  1530                                                       Flagged gains will be 1.0s.
+  1531                                                   'gf_omnical': omnical flag dictionary in the same format. Flags arise from NaNs in log/omnical.
+  1532                                                   'v_omnical': omnical visibility solutions dictionary with baseline-pol tuple keys that are the
+  1533                                                       first elements in each of the sub-lists of reds. Flagged visibilities will be 0.0s.
+  1534                                                   'vf_omnical': omnical visibility flag dictionary in the same format. Flags arise from NaNs.
+  1535                                                   'chisq': chi^2 per degree of freedom for the omnical solution. Normalized using noise derived
+  1536                                                       from autocorrelations. If the inferred pol_mode from reds (see redcal.parse_pol_mode) is
+  1537                                                       '1pol' or '2pol', this is a dictionary mapping antenna polarization (e.g. 'Jnn') to chi^2.
+  1538                                                       Otherwise, there is a single chisq (because polarizations mix) and this is a numpy array.
+  1539                                                   'chisq_per_ant': dictionary mapping ant-pol tuples like (1,'Jnn') to the average chisq
+  1540                                                       for all visibilities that an antenna participates in.
+  1541                                                   'fc_meta' : dictionary that includes delays and identifies flipped antennas
+  1542                                                   'omni_meta': dictionary of information about the omnical convergence and chi^2 of the solution
+  1543                                               '''
+  1544         1          7.0      7.0      0.0      rv = {}  # dictionary of return values
+  1545         1      85675.0  85675.0      0.0      filtered_reds = filter_reds(reds, max_dims=max_dims)
+  1546         1        189.0    189.0      0.0      rc = RedundantCalibrator(filtered_reds)
+  1547         1          2.0      2.0      0.0      if freqs is None:
+  1548         1          5.0      5.0      0.0          freqs = data.freqs
+  1549         1          2.0      2.0      0.0      if times_by_bl is None:
+  1550         1          3.0      3.0      0.0          times_by_bl = data.times_by_bl
+  1551
+  1552                                               # perform firstcal
+  1553         1   89771431.0 89771431.0     27.0      rv['fc_meta'], rv['g_firstcal'] = rc.firstcal(data, freqs, maxiter=fc_maxiter, conv_crit=fc_conv_crit)
+  1554         1        656.0    656.0      0.0      rv['gf_firstcal'] = {ant: np.zeros_like(g, dtype=bool) for ant, g in rv['g_firstcal'].items()}
+  1555
+  1556                                               # perform logcal and omnical
+  1557         1   13775588.0 13775588.0      4.1      _, log_sol = rc.logcal(data, sol0=rv['g_firstcal'])
+  1558         1      23902.0  23902.0      0.0      make_sol_finite(log_sol)
+  1559         1          4.0      4.0      0.0      data_wgts = {bl: predict_noise_variance_from_autos(bl, data, dt=(np.median(np.ediff1d(times_by_bl[bl[:2]]))
+  1560         1    1761612.0 1761612.0      0.5                                                                       * SEC_PER_DAY))**-1 for bl in data.keys()}
+  1561         1          5.0      5.0      0.0      rv['omni_meta'], omni_sol = rc.omnical(data, log_sol, wgts=data_wgts, conv_crit=oc_conv_crit, maxiter=oc_maxiter,
+  1562         1  223283950.0 223283950.0     67.3                                             check_every=check_every, check_after=check_after, gain=gain)
+  1563
+  1564                                               # update omnical flags and then remove degeneracies
+  1565         1        152.0    152.0      0.0      rv['g_omnical'], rv['v_omnical'] = get_gains_and_vis_from_sol(omni_sol)
+  1566         1       7983.0   7983.0      0.0      rv['gf_omnical'] = {ant: ~np.isfinite(g) for ant, g in rv['g_omnical'].items()}
+  1567         1      13538.0  13538.0      0.0      rv['vf_omnical'] = DataContainer({bl: ~np.isfinite(v) for bl, v in rv['v_omnical'].items()})
+  1568         1    1676191.0 1676191.0      0.5      rd_sol = rc.remove_degen(omni_sol, degen_sol=rv['g_firstcal'])
+  1569         1      19920.0  19920.0      0.0      make_sol_finite(rd_sol)
+  1570         1         76.0     76.0      0.0      rv['g_omnical'], rv['v_omnical'] = get_gains_and_vis_from_sol(rd_sol)
+  1571         1        586.0    586.0      0.0      rv['v_omnical'] = DataContainer(rv['v_omnical'])
+  1572         1      14351.0  14351.0      0.0      rv['g_omnical'] = {ant: g * ~rv['gf_omnical'][ant] + rv['gf_omnical'][ant] for ant, g in rv['g_omnical'].items()}
+  1573
+  1574                                               # compute chisqs
+  1575         1    1583172.0 1583172.0      0.5      rv['chisq'], rv['chisq_per_ant'] = normalized_chisq(data, data_wgts, filtered_reds, rv['v_omnical'], rv['g_omnical'])
+  1576         1          8.0      8.0      0.0      return rv
