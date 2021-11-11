@@ -1343,7 +1343,7 @@ class RedundantCalibrator:
         medfilt=False,
         kernel=(1, 1, 11),
         max_grps=100,
-        min_vis_per_ant=100,
+        min_vis_per_ant=None,
     ):
         """
         """
@@ -1365,9 +1365,10 @@ class RedundantCalibrator:
         ants_used_count = {ant: 0 for ant in ants}
 
         # for ni in range(niter):
-        for bls in self.reds:
-            pairs = list(itertools.combinations(bls, 2))
-            # pairs = red_grp[slice(int(ni * max_grps), int((ni + 1) * max_grps))]
+        # for bls in self.reds:
+        for ni in range(niter):
+            # pairs = list(itertools.combinations(bls, 2))
+            pairs = red_grp[slice(int(ni * max_grps), int((ni + 1) * max_grps))]
             dc = []
             wc = []
             for bl1, bl2 in pairs:
@@ -1452,7 +1453,7 @@ class RedundantCalibrator:
         max_rel_angle=(np.pi / 8),
         max_recursion_depth=6,
         max_grps=100,
-        min_vis_per_ant=100,
+        min_vis_per_ant=None,
     ):
         """Solve for a calibration solution parameterized by a single delay and phase offset
         per antenna using the phase difference between nominally redundant measurements.
