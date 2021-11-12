@@ -1,14 +1,117 @@
 Timer unit: 1e-06 s
 
-Total time: 109.814 s
-File: <ipython-input-107-e1a68401b4af>
-Function: newrun at line 1
+Total time: 12.1914 s
+File: /Users/tyler/Work/tf_linsolve/linsolve/tf_linsolve/redcal.py
+Function: _firstcal_iteration at line 1546
 
 Line #      Hits         Time  Per Hit   % Time  Line Contents
 ==============================================================
-     1                                           def newrun(data, freqs, wgts):
-     2                                               """
-     3                                               """
-     4         1   65025467.0 65025467.0     59.2      meta, sol0_new = info_new.firstcal(data, freqs, max_grps=100)
-     5         1     594993.0 594993.0      0.5      meta, log_sol_new = info_new.logcal(data, sol0=sol0_new)
-     6         1   44193436.0 44193436.0     40.2      meta, sol_new = info_new.omnical(data, log_sol_new, wgts=wgts, maxiter=500)
+  1546                                               def _firstcal_iteration(
+  1547                                                   self,
+  1548                                                   data,
+  1549                                                   df,
+  1550                                                   f0,
+  1551                                                   wgts={},
+  1552                                                   offsets_only=False,
+  1553                                                   edge_cut=0,
+  1554                                                   sparse=False,
+  1555                                                   mode="default",
+  1556                                                   norm=True,
+  1557                                                   medfilt=False,
+  1558                                                   kernel=(1, 1, 11),
+  1559                                                   max_grps=100,
+  1560                                                   min_vis_per_ant=None,
+  1561                                               ):
+  1562                                                   """
+  1563                                                   """
+  1564         1          5.0      5.0      0.0          Nfreqs = data[next(iter(data))].shape[1]
+  1565         1          2.0      2.0      0.0          if len(wgts) == 0:
+  1566         1      64292.0  64292.0      0.5              wgts = {k: np.ones_like(data[k], dtype=np.float32) for k in data}
+  1567         1       4862.0   4862.0      0.0          wgts = DataContainer(wgts)
+  1568         1          2.0      2.0      0.0          taus_offs, twgts = {}, {}
+  1569
+  1570         1        660.0    660.0      0.0          red_grp = [list(itertools.combinations(red, 2)) for red in self.reds]
+  1571         1        669.0    669.0      0.0          red_grp = sum(red_grp, [])
+  1572         1          3.0      3.0      0.0          niter = len(red_grp) // max_grps + 1
+  1573
+  1574         1      32253.0  32253.0      0.3          ndims = len(list(reds_to_antpos(self.reds).values())[0])
+  1575         1          2.0      2.0      0.0          reds_used = []
+  1576         2         58.0     29.0      0.0          ants = set(
+  1577         1       1047.0   1047.0      0.0              [ant for red in self.reds for bl in red for ant in utils.split_bl(bl)]
+  1578                                                   )
+  1579         1         10.0     10.0      0.0          ants_used_count = {ant: 0 for ant in ants}
+  1580
+  1581                                                   # for ni in range(niter):
+  1582                                                   # for bls in self.reds:
+  1583      3640       5609.0      1.5      0.0          for ni in range(niter):
+  1584                                                       # pairs = list(itertools.combinations(bls, 2))
+  1585      3639      10412.0      2.9      0.1              pairs = red_grp[slice(int(ni * max_grps), int((ni + 1) * max_grps))]
+  1586      3639       5727.0      1.6      0.0              dc = []
+  1587      3639       5521.0      1.5      0.0              wc = []
+  1588      7277      11945.0      1.6      0.1              for bl1, bl2 in pairs:
+  1589      3638      20617.0      5.7      0.2                  d1, w1 = data[bl1], wgts[bl1]
+  1590      3638     638299.0    175.5      5.2                  d12 = d1 * np.conj(data[bl2])
+  1591      3638       6319.0      1.7      0.1                  if norm:
+  1592      3638     505605.0    139.0      4.1                      ad12 = np.abs(d12)
+  1593      3638     995274.0    273.6      8.2                      d12 /= np.where(ad12 == 0, np.float32(1), ad12)
+  1594      3638     110593.0     30.4      0.9                  w12 = w1 * wgts[bl2]
+  1595
+  1596      3638       7566.0      2.1      0.1                  dc.append(d12)
+  1597      3638       5940.0      1.6      0.0                  wc.append(w12)
+  1598
+  1599      3639       9353.0      2.6      0.1              if len(list(pairs)) >= 1:
+  1600      7276    8507268.0   1169.2     69.8                  taus = fft_dly_new(
+  1601      3638     131753.0     36.2      1.1                      np.array(dc),
+  1602      3638       5871.0      1.6      0.0                      df,
+  1603      3638       5106.0      1.4      0.0                      f0=f0,
+  1604      3638      39009.0     10.7      0.3                      wgts=np.array(wc),
+  1605      3638       5789.0      1.6      0.0                      medfilt=medfilt,
+  1606      3638       5089.0      1.4      0.0                      kernel=kernel,
+  1607      3638       5172.0      1.4      0.0                      edge_cut=edge_cut,
+  1608                                                           )
+  1609      3638     169322.0     46.5      1.4                  tauwgts = np.sum(wc, axis=(1, 2))
+  1610      7276      15843.0      2.2      0.1                  for bi, (bl1, bl2) in enumerate(pairs):
+  1611      3638      12302.0      3.4      0.1                      taus_offs[(bl1, bl2)] = (taus[0][bi], taus[1][bi])
+  1612      3638       7993.0      2.2      0.1                      twgts[(bl1, bl2)] = tauwgts[bi]
+  1613
+  1614      3638      85501.0     23.5      0.7              """
+  1615     10914      17906.0      1.6      0.1                      if not np.all(tauwgts[bi] == 0):
+  1616     21828      55080.0      2.5      0.5                          for bl_here in [bl1, bl2]:
+  1617     14552      28701.0      2.0      0.2                              for ant in utils.split_bl(bl_here):
+  1618                                                                           ants_used_count[ant] += 1
+  1619      3639       5486.0      1.5      0.0
+  1620                                                       if min_vis_per_ant is not None:
+  1621                                                           reds_used.append(bls)
+  1622
+  1623                                                           if np.all(np.array(list(ants_used_count.values())) >= min_vis_per_ant):
+  1624                                                               ndims_here = len(list(reds_to_antpos(reds_used).values())[0])
+  1625                                                               if ndims_here == ndims:
+  1626                                                                   break
+  1627         1          1.0      1.0      0.0              """
+  1628      3639       5684.0      1.6      0.0
+  1629      3638      10605.0      2.9      0.1          d_ls, w_ls = {}, {}
+  1630      3638       9890.0      2.7      0.1          for (bl1, bl2), tau_off_ij in taus_offs.items():
+  1631      3638      22305.0      6.1      0.2              ai, aj = split_bl(bl1)
+  1632      3638       6611.0      1.8      0.1              am, an = split_bl(bl2)
+  1633      3638      13152.0      3.6      0.1              i, j, m, n = (self.pack_sol_key(k) for k in (ai, aj, am, an))
+  1634      3638       6733.0      1.9      0.1              eq_key = "%s-%s-%s+%s" % (i, j, m, n)
+  1635                                                       d_ls[eq_key] = np.array(tau_off_ij)
+  1636         1     338241.0 338241.0      2.8              w_ls[eq_key] = twgts[(bl1, bl2)]
+  1637         1     230709.0 230709.0      1.9
+  1638         1         62.0     62.0      0.0          ls = linsolve.LinearSolver(d_ls, wgts=w_ls, sparse=sparse)
+  1639         1         54.0     54.0      0.0          sol = ls.solve(mode=mode)
+  1640                                                   dly_sol = {self.unpack_sol_key(k): v[0] for k, v in sol.items()}
+  1641         2         57.0     28.5      0.0          off_sol = {self.unpack_sol_key(k): v[1] for k, v in sol.items()}
+  1642         1        947.0    947.0      0.0          # add back in antennas in reds but not in the system of equations
+  1643                                                   ants = set(
+  1644         2        269.0    134.5      0.0              [ant for red in self.reds for bl in red for ant in utils.split_bl(bl)]
+  1645                                                   )
+  1646         1          2.0      2.0      0.0          dly_sol = {
+  1647                                                       ant: dly_sol.get(ant, (np.zeros_like(list(dly_sol.values())[0])))
+  1648         2        251.0    125.5      0.0              for ant in ants
+  1649                                                   }
+  1650         1          2.0      2.0      0.0          off_sol = {
+  1651                                                       ant: off_sol.get(ant, (np.zeros_like(list(off_sol.values())[0])))
+  1652         1          2.0      2.0      0.0              for ant in ants
+  1653                                                   }
+  1654                                                   return dly_sol, off_sol

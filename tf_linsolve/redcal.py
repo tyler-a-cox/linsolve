@@ -9,7 +9,7 @@ import os
 
 import tensorflow as tf
 import tensorflow_addons as tfa
-
+from tqdm import tqdm
 import linsolve
 
 import itertools
@@ -1611,6 +1611,7 @@ class RedundantCalibrator:
                     taus_offs[(bl1, bl2)] = (taus[0][bi], taus[1][bi])
                     twgts[(bl1, bl2)] = tauwgts[bi]
 
+            """
                     if not np.all(tauwgts[bi] == 0):
                         for bl_here in [bl1, bl2]:
                             for ant in utils.split_bl(bl_here):
@@ -1623,6 +1624,7 @@ class RedundantCalibrator:
                     ndims_here = len(list(reds_to_antpos(reds_used).values())[0])
                     if ndims_here == ndims:
                         break
+            """
 
         d_ls, w_ls = {}, {}
         for (bl1, bl2), tau_off_ij in taus_offs.items():
