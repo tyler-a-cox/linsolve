@@ -8,7 +8,8 @@ import argparse
 import os
 
 import tensorflow as tf
-import tensorflow_addons as tfa
+
+# import tensorflow_addons as tfa
 from tqdm import tqdm
 import linsolve
 
@@ -209,6 +210,7 @@ def run_optimization(
     graph_mode=False,
     optimizer="Adamax",
     graph_args_dict={},
+    **opt_kwargs,
 ):
     """
     """
@@ -242,6 +244,7 @@ def run_optimization(
         graph_mode=graph_mode,
         optimizer=optimizer,
         graph_args_dict=graph_args_dict,
+        **opt_kwargs,
     )
     sol = {g: gains[gi] for g, gi in ants_map.items()}
     sol.update({v: vis[vi] for v, vi in vis_map.items()})
@@ -1556,7 +1559,7 @@ class RedundantCalibrator:
         norm=True,
         medfilt=False,
         kernel=(1, 1, 11),
-        max_grps=100,
+        max_grps=1,
         min_vis_per_ant=None,
     ):
         """
